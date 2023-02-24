@@ -129,5 +129,5 @@ function(First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,F
   }
   #Save plot as json object
   jfig <- plotly:::to_JSON(plotly_build(p))
-  return(p)
+  return(jfig)
 }
