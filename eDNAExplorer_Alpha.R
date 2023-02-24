@@ -128,6 +128,6 @@ function(First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,F
       theme_bw()+geom_point()+geom_smooth()
   }
   #Save plot as json object
-  jfig <- plotly:::to_JSON(plotly_build(p))
+  jfig <- plotly:::to_JSON(ggplotly(p))
   return(jfig)
 }
