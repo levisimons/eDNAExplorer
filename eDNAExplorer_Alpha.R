@@ -19,6 +19,7 @@ Sys.setenv("AWS_ACCESS_KEY_ID" = "<insert key>",
            "AWS_SECRET_ACCESS_KEY" = "<insert key")
 
 #* Echo the parameter that was sent in
+#* @param Object_Name:string
 #* @param First_Date:string YYYY-MM-DD
 #* @param Last_Date:string YYYY-MM-DD
 #* @param Marker:string Target marker name
@@ -29,8 +30,7 @@ Sys.setenv("AWS_ACCESS_KEY_ID" = "<insert key>",
 #* @param EnvironmentalParameter:string Environmental variable to analyze against alpha diversity
 #* @param AlphaDiversity:string Alpha diversity metric
 #* @get /Tronko_Input
-function(First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,EnvironmentalParameter,AlphaDiversity){
-  
+alpha <- function(Object_Name,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,EnvironmentalParameter,AlphaDiversity){
   #Define filters in Phyloseq as global parameters.
   sample_First_Date <<- ymd(First_Date)
   sample_Last_Date <<- ymd(Last_Date)
@@ -41,46 +41,6 @@ function(First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,F
   sample_FilterThreshold <<- as.numeric(FilterThreshold)
   EnvironmentalVariable <<- as.character(EnvironmentalParameter)
   AlphaDiversityMetric <<- as.character(AlphaDiversity)
-  
-  CategoricalVariables <- c("grtgroup","biome_type","IUCN_CAT","ECO_NAME","HYBAS_ID")
-  ContinuousVariables <- c("bio01","bio12","gHM","elevation","NDVI","Average_Radiance")
-  TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-  
-  #Read in parsed Tronko database.
-  Tronko_Input <- get_object("test-taxa.tsv",bucket="ednaexplorer",region="",as="text",base_url="js2.jetstream-cloud.org:8001") %>% data.table::fread(encoding="UTF-8")
-  
-  #Coerce date type.
-  TronkoDB <- as.data.frame(Tronko_Input)
-  TronkoDB$sample_date <- as.Date(TronkoDB$sample_date)
-  
-  #Filter by maximum number of read mismatches.
-  TronkoDB <- TronkoDB[TronkoDB$Mismatch <= sample_Num_Mismatch & !is.na(TronkoDB$Mismatch),]
-  
-  #Convert all character variables to being categorical. Default is that all numeric columns are continuous.
-  TronkoDB[sapply(TronkoDB, is.character)] <- lapply(TronkoDB[sapply(TronkoDB, is.character)], as.factor)
-  TronkoDB$SampleID <- as.character(TronkoDB$SampleID)
-  
-  #Create Phyloseq object
-  #Create a taxonomic id matrix.
-  taxmat <- TronkoDB[,c("usageKey",TaxonomicRanks)]
-  taxmat <- taxmat[!duplicated(taxmat),]
-  rownames(taxmat) <- taxmat$usageKey
-  taxmat <- as.matrix(taxmat[,TaxonomicRanks])
-  TAX = suppressWarnings(tax_table(taxmat))
-  #Create OTU matrix
-  otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID","usageKey")])), names_from = SampleID, values_from = Freq))
-  rownames(otumat) <- otumat$usageKey
-  otumat <- otumat[,colnames(otumat) %in% unique(TronkoDB$SampleID)]
-  otumat[sapply(otumat, is.character)] <- lapply(otumat[sapply(otumat, is.character)], as.numeric)
-  OTU <- otu_table(as.matrix(otumat), taxa_are_rows = TRUE)
-  #Create sample metadata matrix
-  Sample <- TronkoDB[,colnames(TronkoDB) %in% c("SampleID","sample_date","Primer",CategoricalVariables,ContinuousVariables)]
-  Sample <- Sample[!duplicated(Sample),]
-  rownames(Sample) <- Sample$SampleID
-  Sample$SampleID <- NULL
-  Sample <- sample_data(Sample)
-  #Create merged Phyloseq object.
-  physeq <- phyloseq(OTU,TAX,Sample)
   
   #Filter eDNA data by date range and primers
   physeq <- subset_samples(physeq,sample_date >= sample_First_Date & sample_date <= sample_Last_Date & Primer==sample_Primer)
