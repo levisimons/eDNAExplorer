@@ -27,7 +27,7 @@ require(jsonlite)
 #* @param EnvironmentalParameter:string Environmental variable to analyze against alpha diversity
 #* @param AlphaDiversity:string Alpha diversity metric
 #* @get /Tronko_Input
-function(Object_Name,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,EnvironmentalParameter,AlphaDiversity){
+alpha <- function(Object_Name,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,EnvironmentalParameter,AlphaDiversity){
   
   #Define filters in Phyloseq as global parameters.
   sample_First_Date <<- ymd(First_Date)
