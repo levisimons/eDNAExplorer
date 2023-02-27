@@ -15,10 +15,8 @@ require(htmlwidgets)
 require(plotly)
 require(jsonlite)
 
-Sys.setenv("AWS_ACCESS_KEY_ID" = "<insert key>",
-           "AWS_SECRET_ACCESS_KEY" = "<insert key")
-
 #* Echo the parameter that was sent in
+#* @param Object_Name:string S3 object to read
 #* @param First_Date:string YYYY-MM-DD
 #* @param Last_Date:string YYYY-MM-DD
 #* @param Marker:string Target marker name
@@ -29,7 +27,7 @@ Sys.setenv("AWS_ACCESS_KEY_ID" = "<insert key>",
 #* @param EnvironmentalParameter:string Environmental variable to analyze against alpha diversity
 #* @param AlphaDiversity:string Alpha diversity metric
 #* @get /Tronko_Input
-function(First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,EnvironmentalParameter,AlphaDiversity){
+function(Object_Name,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,EnvironmentalParameter,AlphaDiversity){
   
   #Define filters in Phyloseq as global parameters.
   sample_First_Date <<- ymd(First_Date)
@@ -47,7 +45,7 @@ function(First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,F
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
   
   #Read in parsed Tronko database.
-  Tronko_Input <- get_object("test-taxa.tsv",bucket="ednaexplorer",region="",as="text",base_url="js2.jetstream-cloud.org:8001") %>% data.table::fread(encoding="UTF-8")
+  Tronko_Input <- get_object(Object_Name,bucket="ednaexplorer",region="",as="text",base_url="js2.jetstream-cloud.org:8001") %>% data.table::fread(encoding="UTF-8")
   
   #Coerce date type.
   TronkoDB <- as.data.frame(Tronko_Input)
