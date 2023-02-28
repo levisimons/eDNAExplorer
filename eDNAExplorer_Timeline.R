@@ -10,10 +10,9 @@ require(jsonlite)
 
 #* Echo the parameter that was sent in
 #* @param Taxon_name:string Scientific taxon name
-#* @param Num_Mismatch:numeric Maximum number of sequence mismatches allowed with Tronko-assign output
 #* @get /Tronko_Input
 
-timeline <- function(Taxon_name,Num_Mismatch){
+timeline <- function(Taxon_name){
   
   #Select taxon to map.
   #User input
@@ -34,9 +33,6 @@ timeline <- function(Taxon_name,Num_Mismatch){
   
   #Find where taxon occurs in Tronko output.
   TaxonDB <- TronkoDB[TronkoDB$usageKey==Taxon_GBIF & !is.na(TronkoDB$usageKey),]
-  
-  #Filter results by maximum number of Tronko-assign mismatches.
-  TaxonDB <- TaxonDB[TaxonDB$Mismatch <= Num_Mismatch,]
   
   #Get GBIF occurrences over time.
   Taxa_Time <- data.frame()
