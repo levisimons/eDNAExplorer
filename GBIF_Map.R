@@ -1,68 +1,57 @@
-rm(list=ls())
+# plumber.R
+library(plumber)
+require(aws.s3)
 require(tidyr)
 require(dplyr)
-require(ggplot2)
-require(plotly)
 require(rgbif)
-require(leaflet)
-require(htmlwidgets)
+require(jsonlite)
+require(gbifdb)
 
-wd <- "~/Desktop/eDNAExplorer/Tronko/"
+#* Echo the parameter that was sent in
+#* @param Taxon_name:string Scientific taxon name
+#* @get /Tronko_Input
 
-setwd(wd)
-
-#Read in parsed Tronko-assign output files.  Generated from eDNAExplorer_Initializer.R.
-TronkoDB <- suppressWarnings(read.table("Taxa_Parsed.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8"))
-
-#Set taxonomic rank column names.
-TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-
-#Select taxon to map.
-#User input
-Taxon <- "Bos taurus"
-#Get GBIF taxonomy key for taxon.
-Taxon_GBIF <- name_backbone(Taxon)$usageKey
-
-#Read in full metadata.
-Metadata <- suppressWarnings(read.table("Metadata.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8"))
-
-#Find where taxon occurs in Tronko output.
-TaxonDB <- dplyr::filter_all(TronkoDB, any_vars(. ==Taxon))
-TaxonDB <- TaxonDB %>% dplyr::mutate_at(Metadata$sample_id, as.numeric)
-
-#Get taxon locations
-Sample_Occurrences <- TaxonDB[,Metadata$sample_id]
-Sample_Occurrences <- Sample_Occurrences %>% select_if(~any(. > 0))
-Taxon_Locations <- Metadata[Metadata$sample_id %in% colnames(Sample_Occurrences),c("longitude","latitude")]
-
-# create style raster layer 
-projection = '3857' # projection code
-style = 'style=osm-bright' # map style
-tileRaster = paste0('https://tile.gbif.org/',projection,'/omt/{z}/{x}/{y}@4x.png?',style)
-# create our polygons layer 
-prefix = 'https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@4x.png?'
-polygons = 'style=classic.poly&bin=hex&hexPerTile=70' # ploygon styles 
-taxonKey = paste("taxonKey=",Taxon_GBIF,sep="")
-tilePolygons = paste0(prefix,polygons,'&',taxonKey)
-# plot the styled map
-map <- leaflet() %>%
-  setView(lng = 5.4265362, lat = 43.4200248, zoom = 01) %>%
-  addTiles(urlTemplate=tileRaster) %>%
-  addTiles(urlTemplate=tilePolygons) %>%
-  addMarkers(lng=Taxon_Locations$longitude,lat=Taxon_Locations$latitude)
-saveWidget(map,file="Taxa_Map.html")
-
-#Get GBIF occurrences over time.
-Taxa_Time <- data.frame()
-for(GBIF_Year in 1950:as.integer(format(Sys.Date(), "%Y"))){
-  tmp <- data.frame(matrix(nrow=1,ncol=2))
-  colnames(tmp) <- c("Year","Occurrences")
-  tmp$Year <- GBIF_Year
-  tmp$Occurrences <- occ_count(taxonKey=Taxon_GBIF,georeferenced=TRUE,year=GBIF_Year)
-  Taxa_Time <- rbind(Taxa_Time,tmp)
+GBIF_Map <- function(Taxon_name){
+  #Select taxon to map.
+  #User input
+  Taxon <- Taxon_name
+  #Get GBIF taxonomy key for taxon.
+  Taxon_GBIF <- name_backbone(Taxon)$usageKey
+  
+  #Read in parsed Tronko database.
+  Tronko_Input <- get_object("test-taxa.tsv",bucket="ednaexplorer",region="",as="text",base_url="js2.jetstream-cloud.org:8001") %>% data.table::fread(encoding="UTF-8")
+  
+  #Coerce date type.
+  TronkoDB <- as.data.frame(Tronko_Input)
+  
+  #Taxonomic rank column names
+  TaxonomicRanks <- c("superkingdom","phylum","class","order","family","genus","species")
+  
+  #Find where taxon occurs in Tronko output.
+  TaxonDB <- dplyr::filter_all(TronkoDB[,c(TaxonomicRanks,"longitude","latitude")], any_vars(. ==Taxon))
+  
+  #Get taxon locations by eDNA.
+  Taxon_Locations <- TaxonDB[,c("longitude","latitude")]
+  Taxon_Locations <- Taxon_Locations[!duplicated(Taxon_Locations),]
+  Taxon_Locations$Sample_Source <- "eDNA"
+  
+  #Read in GBIF occurrences.
+  gbif <- gbif_local()
+  
+  #Filter GBIF occurrence locations by taxon.
+  Taxon_Map <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
+                               coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
+                               occurrencestatus=="PRESENT",
+                               taxonkey==Taxon_GBIF) %>% select(decimallongitude,decimallatitude)
+  
+  Taxon_Map <- as.data.frame(Taxon_Map)
+  colnames(Taxon_Map) <- c("longitude","latitude")
+  Taxon_Map$Sample_Source <- "GBIF"
+  
+  #Merge eDNA and GBIF taxon locations
+  Taxon_Map <- rbind(Taxon_Locations,Taxon_Map)
+  print(Taxon_Map)
+  #Return results
+  Taxon_Map_Data <- jsonlite::toJSON(Taxon_Map)
+  return(Taxon_Map_Data)
 }
-#Plot GBIF occurrences over time.
-p <- ggplot(data=Taxa_Time,aes(x=Year,y=Occurrences))+geom_bar(stat="identity",fill="gold")
-#Save timeline output.
-write.table(Taxa_Time,"Taxa_Timeline.txt",quote=FALSE,sep="\t",row.names = FALSE)
-saveWidget(ggplotly(p, tooltip = "all"),file="Taxa_Timeline.html")
