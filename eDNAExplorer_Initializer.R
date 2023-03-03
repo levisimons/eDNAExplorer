@@ -134,55 +134,51 @@ for(key in unique(PhylopicDB$usageKey)){
   Common_Names <- rbind(Common_Names,tmp)
 }
 PhylopicDB <- dplyr::left_join(PhylopicDB,Common_Names)
-print(unique(PhylopicDB$usageKey))
 
 #Read in GBIF occurrences.
 gbif <- gbif_local()
-Taxa_Key_List <- unique(PhylopicDB$usageKey)
-GBIF_DB <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
-                           coordinateuncertaintyinmeters <= 1000,
-                           occurrencestatus=="PRESENT",
-                           taxonkey %in% Taxa_Key_List) %>% select(decimallongitude,decimallatitude,taxonkey,taxonrank,species,genus,family)
-GBIF_Input <- as.data.frame(GBIF_DB)
 
-GBIF_Input <- sf::st_as_sf(GBIF_Input,coords=c("decimallongitude","decimallatitude"),crs=4326)
-#Read in the boundaries for ecoregions and realms
-EcoBoundaries <- sf::st_read("Ecoregions2017.shp")
-#Get realms present in sample data.
-Realms <- EcoBoundaries[EcoBoundaries$REALM %in% unique(Metadata$REALM),]
-#Get ecoregions present in sample data.
-Eco_Regions <- EcoBoundaries[EcoBoundaries$ECO_NAME %in% unique(Metadata$ECO_NAME),]
-
-#Clip GBIF occurrence locations by realms.
-Taxa_Realm <- suppressWarnings(sf::st_intersection(GBIF_Input,Realms))
-#Assign weight value for species, genera, and families.
-Taxa_Realm <- Taxa_Realm %>% dplyr:: mutate(Realm_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
-print(head(Taxa_Realm,n=5))
-
-#Clip GBIF occurrence locations by ecoregions.
-Taxa_Ecoregion <- suppressWarnings(sf::st_intersection(GBIF_Input,Eco_Regions))
-#Assign weight value for species, genera, and families.
-Taxa_Ecoregion <- Taxa_Ecoregion %>% dplyr:: mutate(Ecoregion_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
-print(head(Taxa_Ecoregion,n=5))
+#Read in state/province boundaries.
+#Boundaries are from https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/
+sf_use_s2(FALSE)
+GADM_1_Boundaries <- sf::st_read("ne_10m_admin_1_states_provinces.shp")
+#Determine the unique list of national and state/proving boundaries sample locations cover.
+country_list <- st_join(st_as_sf(Metadata, coords = c("longitude", "latitude"), crs = 4326), GADM_1_Boundaries['iso_a2'],join = st_intersects)
+country_list <- na.omit(unique(country_list$iso_a2))
+state_province_list <- st_join(st_as_sf(Metadata, coords = c("longitude", "latitude"), crs = 4326), GADM_1_Boundaries['woe_name'],join = st_intersects)
+state_province_list <- na.omit(unique(state_province_list$woe_name))
 
 #Get local bounds for sample locations, add 0.5 degree buffer.
-Local_East <- min(Metadata$longitude)-0.5
-Local_West <- max(Metadata$longitude)+0.5
+Local_East <- max(Metadata$longitude)+0.5
+Local_West <- min(Metadata$longitude)-0.5
 Local_South <- min(Metadata$latitude)-0.5
 Local_North <- max(Metadata$latitude)+0.5
-ylims <- c(Local_South,Local_North)
-xlims <- c(Local_West,Local_East)
-box_coords <- tibble(x = xlims, y = ylims) %>% 
-  st_as_sf(coords = c("x", "y")) %>% 
-  st_set_crs(st_crs(4326))
-#get the bounding box of the two x & y coordintates, make sfc
-Local_Bounds <- st_bbox(box_coords) %>% st_as_sfc()
 
 #Clip GBIF occurrence locations by local boundaries.
-Taxa_Local <- suppressWarnings(sf::st_intersection(GBIF_Input,Local_Bounds))
+Taxa_Local <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
+                              coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
+                              occurrencestatus=="PRESENT",
+                              decimallongitude >= Local_West & decimallongitude <= Local_East & decimallatitude >= Local_South & decimallatitude <= Local_North) %>% 
+  select(decimallongitude,decimallatitude,taxonkey,taxonrank,species,genus,family,order,class,phylum,kingdom)
+Taxa_Local <- as.data.frame(Taxa_Local)
 #Assign weight value for species, genera, and families.
 Taxa_Local <- Taxa_Local %>% dplyr:: mutate(Local_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
-print(head(Taxa_Local,n=5))
+
+#Clip GBIF occurrence locations by state/province boundaries.
+Taxa_State <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
+                              coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
+                              occurrencestatus=="PRESENT", stateprovince %in% state_province_list) %>% select(decimallongitude,decimallatitude,taxonkey,taxonrank,species,genus,family,order,class,phylum,kingdom)
+Taxa_State <- as.data.frame(Taxa_State)
+#Assign weight value for species, genera, and families.
+Taxa_State <- Taxa_State %>% dplyr:: mutate(State_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
+
+#Clip GBIF occurrence locations by national boundaries.
+Taxa_Nation <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
+                              coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
+                              occurrencestatus=="PRESENT", countrycode %in% country_list) %>% select(decimallongitude,decimallatitude,taxonkey,taxonrank,species,genus,family,order,class,phylum,kingdom)
+Taxa_Nation <- as.data.frame(Taxa_Nation)
+#Assign weight value for species, genera, and families.
+Taxa_Nation <- Taxa_Nation %>% dplyr:: mutate(Ecoregion_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
 
 #Count eDNA taxonomic resolution and weigh them.
 #Species = 4, Genus = 2, Family = 1.  Everything else = 0.
@@ -191,21 +187,21 @@ TronkoDB$eDNAWeight <- 1*as.numeric(!is.na(TronkoDB$family))+2*as.numeric(!is.na
 #Check if any of the eDNA reads show up in the local set of GBIF family observations.
 TronkoDB$LocalFamilyPresentGBIF <- as.numeric(lapply(TronkoDB$family,is.element,unique(na.omit(Taxa_Local$family))))
 #Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
-TronkoDB$EcoregionFamilyPresentGBIF <- as.numeric(lapply(TronkoDB$family,is.element,unique(na.omit(Taxa_Ecoregion$family))))
+TronkoDB$EcoregionFamilyPresentGBIF <- as.numeric(lapply(TronkoDB$family,is.element,unique(na.omit(Taxa_State$family))))
 #Check if any of the eDNA reads show up in the realm set of GBIF family observations.
-TronkoDB$RealmFamilyPresentGBIF <- as.numeric(lapply(TronkoDB$family,is.element,unique(na.omit(Taxa_Realm$family))))
+TronkoDB$RealmFamilyPresentGBIF <- as.numeric(lapply(TronkoDB$family,is.element,unique(na.omit(Taxa_Nation$family))))
 #Check if any of the eDNA reads show up in the local set of GBIF family observations.
 TronkoDB$LocalGenusPresentGBIF <- as.numeric(lapply(TronkoDB$genus,is.element,unique(na.omit(Taxa_Local$genus))))
 #Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
-TronkoDB$EcoregionGenusPresentGBIF <- as.numeric(lapply(TronkoDB$genus,is.element,unique(na.omit(Taxa_Ecoregion$genus))))
+TronkoDB$EcoregionGenusPresentGBIF <- as.numeric(lapply(TronkoDB$genus,is.element,unique(na.omit(Taxa_State$genus))))
 #Check if any of the eDNA reads show up in the realm set of GBIF genus observations.
-TronkoDB$RealmGenusPresentGBIF <- as.numeric(lapply(TronkoDB$genus,is.element,unique(na.omit(Taxa_Realm$genus))))
+TronkoDB$RealmGenusPresentGBIF <- as.numeric(lapply(TronkoDB$genus,is.element,unique(na.omit(Taxa_Nation$genus))))
 #Check if any of the eDNA reads show up in the local set of GBIF family observations.
 TronkoDB$LocalSpeciesPresentGBIF <- as.numeric(lapply(TronkoDB$species,is.element,unique(na.omit(Taxa_Local$species))))
 #Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
-TronkoDB$EcoregionSpeciesPresentGBIF <- as.numeric(lapply(TronkoDB$species,is.element,unique(na.omit(Taxa_Ecoregion$species))))
+TronkoDB$EcoregionSpeciesPresentGBIF <- as.numeric(lapply(TronkoDB$species,is.element,unique(na.omit(Taxa_State$species))))
 #Check if any of the eDNA reads show up in the realm set of GBIF genus observations.
-TronkoDB$RealmSpeciesPresentGBIF <- as.numeric(lapply(TronkoDB$species,is.element,unique(na.omit(Taxa_Realm$species))))
+TronkoDB$RealmSpeciesPresentGBIF <- as.numeric(lapply(TronkoDB$species,is.element,unique(na.omit(Taxa_Nation$species))))
 
 #Assign TOS scores for GBIF results.
 TronkoDB$TOS_Local <- (1*TronkoDB$LocalFamilyPresentGBIF+2*TronkoDB$LocalGenusPresentGBIF+4*TronkoDB$LocalSpeciesPresentGBIF)/TronkoDB$eDNAWeight
