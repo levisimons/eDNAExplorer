@@ -11,9 +11,6 @@ require(rgbif)
 require(duckdb)
 require(aws.s3)
 
-Sys.setenv("AWS_ACCESS_KEY_ID" = "e9190baae65b40a38bf43ade883b04a6",
-           "AWS_SECRET_ACCESS_KEY" = "7aa129a7d84744efa76183cc9cf4b0a5")
-
 ## This script should run automatically once a project's metadata and sequence data are uploaded.
 #1. Parse Tronko output into a taxa by sample dataframe.
 #Calculate the traditional observation score between eDNA and GBIF data per taxon. Merge in environmental metadata.
