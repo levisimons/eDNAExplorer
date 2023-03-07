@@ -47,11 +47,13 @@ TronkoDB <- suppressWarnings(tidyr::separate(TronkoDB,'sum.taxonomy',TaxonomicRa
 TronkoDB$Mismatch <- TronkoDB$Forward_Mismatch+TronkoDB$Reverse_Mismatch
 
 #Read in initial metadata.
-Metadata_Initial <- suppressWarnings(read.table("InputMetadata.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8"))
+Metadata_Initial <- get_object(object="InputMetadata.csv",bucket=eval(BucketID),region="",as="text",base_url="js2.jetstream-cloud.org:8001") %>% data.table::fread(encoding="UTF-8")
+Metadata_Initial <- as.data.frame(Metadata_Initial)
 #Get field variables from initial metadata.
 Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% c("sample_id","longitude","latitude","sample_date","spatial_uncertainty"))]
 #Read in extracted metadata.
-Metadata_Extracted <- suppressWarnings(read.table("MetadataOutput.csv", header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8"))
+Metadata_Extracted <- get_object(object="MetadataOutput.csv",bucket=eval(BucketID),region="",as="text",base_url="js2.jetstream-cloud.org:8001") %>% data.table::fread(encoding="UTF-8")
+Metadata_Extracted <- as.data.frame(Metadata_Extracted)
 names(Metadata_Extracted)[names(Metadata_Extracted) == 'name'] <- 'sample_id'
 #Merge metadata
 Metadata <- dplyr::left_join(Metadata_Initial[,c("sample_id",Field_Variables)],Metadata_Extracted)
