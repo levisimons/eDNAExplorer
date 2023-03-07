@@ -1,3 +1,4 @@
+rm(list=ls())
 require(tidyr)
 require(dplyr)
 require(sf)
@@ -8,6 +9,10 @@ require(gbifdb)
 require(jsonlite)
 require(rgbif)
 require(duckdb)
+require(aws.s3)
+
+Sys.setenv("AWS_ACCESS_KEY_ID" = "e9190baae65b40a38bf43ade883b04a6",
+           "AWS_SECRET_ACCESS_KEY" = "7aa129a7d84744efa76183cc9cf4b0a5")
 
 ## This script should run automatically once a project's metadata and sequence data are uploaded.
 #1. Parse Tronko output into a taxa by sample dataframe.
@@ -15,20 +20,22 @@ require(duckdb)
 #2. Update taxon to icon database for web graphics.
 ##
 
+ProjectID <- "test1" #This is hard-coded for now.
+BucketID <- paste("ednaexplorer",ProjectID,sep="/")
 #Read in Tronko-assign output files.  Standardize sample IDs within them.
-TronkoFiles <- list.files(pattern=".out.txt")
+TronkoBucket <- get_bucket_df(bucket="ednaexplorer",prefix=eval(ProjectID),region="",as="text",base_url="js2.jetstream-cloud.org:8001")
+TronkoBucket$Key <- gsub(".*/","",TronkoBucket$Key)
+TronkoFiles <-TronkoBucket[grepl(".txt$",TronkoBucket$Key),"Key"]
 TronkoInputs <- data.frame()
 for(TronkoFile in TronkoFiles){
-  TronkoInput <- read.table(TronkoFile, header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
+  TronkoInput <- get_object(object=eval(TronkoFile),bucket=eval(BucketID),region="",as="text",base_url="js2.jetstream-cloud.org:8001") %>% data.table::fread(encoding="UTF-8")
   TronkoInput$SampleID <- sub("_[^_]+$", "", TronkoFile)
   TronkoInput$Category <- "Tronko-assign"
   TronkoInputs <- rbind(TronkoInputs,TronkoInput)
 }
 TronkoDB <- TronkoInputs
-
-#Get project primers.  Hard coded for now.
-Primer <- "MiFish_12S_U"
-TronkoDB$Primer <- Primer
+spl <- strsplit(as.character(TronkoDB$SampleID), "_")
+TronkoDB$Primer <- sapply(lapply(spl, head, -1), paste, collapse="_")
 
 #Standardize taxonomy naming schema.
 names(TronkoDB)[names(TronkoDB) == 'Taxonomic_Path'] <- 'sum.taxonomy'
@@ -75,8 +82,10 @@ for(phylum in na.omit(unique(TronkoDB$phylum))){
 TronkoDB <- dplyr::left_join(TronkoDB,Phylum_to_Kingdom)
 
 #Get taxa which have already been added to the Phylopic database.
-if(file.exists("PhylopicDB.txt")==TRUE){
-  PhylopicDB_Initial <- read.table("PhylopicDB.txt", header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
+if(suppressWarnings(object_exists(object = "PhylopicDB.txt", bucket = "ednaexplorer", region="",base_url="js2.jetstream-cloud.org:8001"))==TRUE){
+  PhylopicDB_Initial <- get_object("PhylopicDB.txt",bucket="ednaexplorer",region="",as="text",base_url="js2.jetstream-cloud.org:8001") %>% data.table::fread(encoding="UTF-8")
+  PhylopicDB_Initial <- as.data.frame(PhylopicDB_Initial)
+  PhylopicDB_Initial <- PhylopicDB_Initial[!duplicated(PhylopicDB_Initial),]
 } else {
   PhylopicDB_Initial <- data.frame()
 }
@@ -114,8 +123,13 @@ for(Unique_Taxon in Unique_Taxa){
   tmp <- cbind(tmp,Taxon_Keys)
   PhylopicDB <- dplyr::bind_rows(PhylopicDB,tmp)
 }
-#Save Phylopic database to table.
-write.table(PhylopicDB,"PhylopicDB.txt",quote=FALSE,sep="\t",row.names = FALSE)
+#Save updated Phylopic database to AWS.
+delete_object(object = "PhylopicDB.txt", bucket = "ednaexplorer",region="",base_url="js2.jetstream-cloud.org:8001")
+tmp <- rawConnection(raw(0), "r+")
+PhylopicDB <- PhylopicDB[!duplicated(PhylopicDB),]
+utils::write.table(PhylopicDB,file=tmp,quote=FALSE,sep="\t",row.names = FALSE)
+put_object(rawConnectionValue(tmp), object = "PhylopicDB.txt", bucket = "ednaexplorer", show_progress = TRUE,region="",as="text",base_url="js2.jetstream-cloud.org:8001",overwrite=TRUE)
+close(tmp)
 PhylopicDB <- dplyr::left_join(PhylopicDB,Unique_Taxa_df)
 #Get common names and merge them into Phylopic database.
 Common_Names <- data.frame()
@@ -135,24 +149,29 @@ for(key in unique(PhylopicDB$usageKey)){
 }
 PhylopicDB <- dplyr::left_join(PhylopicDB,Common_Names)
 
-#Read in GBIF occurrences.
-gbif <- gbif_local()
-
 #Read in state/province boundaries.
 #Boundaries are from https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/
 sf_use_s2(FALSE)
 GADM_1_Boundaries <- sf::st_read("ne_10m_admin_1_states_provinces.shp")
 #Determine the unique list of national and state/proving boundaries sample locations cover.
-country_list <- st_join(st_as_sf(Metadata, coords = c("longitude", "latitude"), crs = 4326), GADM_1_Boundaries['iso_a2'],join = st_intersects)
-country_list <- na.omit(unique(country_list$iso_a2))
-state_province_list <- st_join(st_as_sf(Metadata, coords = c("longitude", "latitude"), crs = 4326), GADM_1_Boundaries['woe_name'],join = st_intersects)
-state_province_list <- na.omit(unique(state_province_list$woe_name))
+GADM_Boundaries <- st_join(st_as_sf(Metadata, coords = c("longitude", "latitude"), crs = 4326), GADM_1_Boundaries[c('iso_a2','woe_name')],join = st_intersects)
+GADM_Boundaries <- GADM_Boundaries %>% st_drop_geometry()
+GADM_Boundaries <- as.data.frame(GADM_Boundaries[,c("sample_id","sample_date","iso_a2","woe_name")])
+names(GADM_Boundaries)[names(GADM_Boundaries) == "woe_name"] <- "State"
+names(GADM_Boundaries)[names(GADM_Boundaries) == "iso_a2"] <- "Nation"
+names(GADM_Boundaries)[names(GADM_Boundaries) == "sample_id"] <- "SampleID"
+TronkoDB <- dplyr::left_join(TronkoDB,GADM_Boundaries)
+country_list <- na.omit(unique(GADM_Boundaries$Nation))
+state_province_list <- na.omit(unique(GADM_Boundaries$State))
 
 #Get local bounds for sample locations, add 0.5 degree buffer.
 Local_East <- max(Metadata$longitude)+0.5
 Local_West <- min(Metadata$longitude)-0.5
 Local_South <- min(Metadata$latitude)-0.5
 Local_North <- max(Metadata$latitude)+0.5
+
+#Read in GBIF occurrences.
+gbif <- gbif_local()
 
 #Clip GBIF occurrence locations by local boundaries.
 Taxa_Local <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
@@ -222,5 +241,9 @@ TronkoDB$LeafTaxa <- tmp[cbind(1:nrow(tmp), max.col(!is.na(tmp), ties.method = '
 #Merge in Phylopic urls corresponding to most finely resolved taxon in each row.
 TronkoDB <- dplyr::left_join(TronkoDB,PhylopicDB,by=c("LeafTaxa"="Taxon"))
 
-#Export dataframe to file for downstream use.
-write.table(TronkoDB,"Taxa_Parsed.txt",quote=FALSE,sep="\t",row.names = FALSE)
+#Export dataframe to an AWS bucket.
+delete_object(object = "Taxa_Parsed.tsv", bucket = eval(BucketID),region="",base_url="js2.jetstream-cloud.org:8001")
+tmp <- rawConnection(raw(0), "r+")
+utils::write.table(TronkoDB,file=tmp,quote=FALSE,sep="\t",row.names = FALSE)
+put_object(rawConnectionValue(tmp), object = "Taxa_Parsed.tsv", bucket = eval(BucketID), show_progress = TRUE,region="",as="text",base_url="js2.jetstream-cloud.org:8001",overwrite=TRUE)
+close(tmp)
