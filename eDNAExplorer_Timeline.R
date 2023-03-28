@@ -5,12 +5,13 @@ require(tidyr)
 require(dplyr)
 require(ggplot2)
 require(rgbif)
+require(gbifdb)
 require(plotly)
 require(jsonlite)
 
 #* Echo the parameter that was sent in
 #* @param Taxon_name:string Scientific taxon name
-#* @get /Tronko_Input
+#* @get /timeline
 
 timeline <- function(Taxon_name){
   
@@ -20,32 +21,18 @@ timeline <- function(Taxon_name){
   #Get GBIF taxonomy key for taxon.
   Taxon_GBIF <- name_backbone(Taxon)$usageKey
   
-  #Read in parsed Tronko database.
-  Tronko_Input <- get_object("test-taxa.tsv",bucket="ednaexplorer",region="",as="text",base_url="js2.jetstream-cloud.org:8001") %>% data.table::fread(encoding="UTF-8")
-    
-  #Coerce date type.
-  TronkoDB <- as.data.frame(Tronko_Input)
-  TronkoDB$sample_date <- as.Date(TronkoDB$sample_date)
+  #Read in GBIF occurrences.
+  gbif <- gbif_local()
   
-  #Convert all character variables to being categorical. Default is that all numeric columns are continuous.
-  TronkoDB[sapply(TronkoDB, is.character)] <- lapply(TronkoDB[sapply(TronkoDB, is.character)], as.factor)
-  TronkoDB$SampleID <- as.character(TronkoDB$SampleID)
+  #Filter GBIF occurrences to a particular taxon.
+  TaxonDB <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
+                                coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
+                                occurrencestatus=="PRESENT",taxonkey==Taxon_GBIF) %>% select(year)
+  TaxonDB <- as.data.frame(TaxonDB)
   
-  #Find where taxon occurs in Tronko output.
-  TaxonDB <- TronkoDB[TronkoDB$usageKey==Taxon_GBIF & !is.na(TronkoDB$usageKey),]
-  
-  #Get GBIF occurrences over time.
-  Taxa_Time <- data.frame()
-  for(GBIF_Year in 1950:as.integer(format(Sys.Date(), "%Y"))){
-    tmp <- data.frame(matrix(nrow=1,ncol=2))
-    colnames(tmp) <- c("Year","Occurrences")
-    tmp$Year <- GBIF_Year
-    tmp$Occurrences <- occ_count(taxonKey=Taxon_GBIF,georeferenced=TRUE,year=GBIF_Year)
-    Taxa_Time <- rbind(Taxa_Time,tmp)
-  }
-  #Plot GBIF occurrences over time.
-  p <- ggplot(data=Taxa_Time,aes(x=Year,y=Occurrences))+geom_bar(stat="identity",fill="gold")
-  #Save plot as json object
-  jfig <- plotly_json(p, FALSE)
-  return(jfig)
+  #Get GBIF taxon occurrences over time.
+  Taxa_Time <- as.data.frame(table(TaxonDB))
+  colnames(Taxa_Time) <- c("year","Occurrences")
+  Taxa_Time <- toJSON(Taxa_Time)
+  return(Taxa_Time)
 }
