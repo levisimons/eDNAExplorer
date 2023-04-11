@@ -14,6 +14,13 @@ require(phyloseq)
 require(htmlwidgets)
 require(plotly)
 require(jsonlite)
+require(data.table)
+require(DBI)
+require(RSQLite)
+require(digest)
+
+Sys.setenv("AWS_ACCESS_KEY_ID" = "",
+           "AWS_SECRET_ACCESS_KEY" = "")
 
 #* Echo the parameter that was sent in
 #* @param ProjectID:string
@@ -31,8 +38,8 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   
   #Define filters in Phyloseq as global parameters.
   sample_ProjectID <<- as.character(ProjectID)
-  sample_First_Date <<- ymd(First_Date)
-  sample_Last_Date <<- ymd(Last_Date)
+  sample_First_Date <<- as.numeric(as.POSIXct(First_Date))
+  sample_Last_Date <<- as.numeric(as.POSIXct(Last_Date))
   sample_Primer <<- as.character(Marker)
   sample_TaxonomicRank <<- as.character(TaxonomicRank)
   sample_Num_Mismatch <<- as.numeric(Num_Mismatch)
@@ -43,57 +50,54 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   
   CategoricalVariables <- c("grtgroup","biome_type","IUCN_CAT","ECO_NAME","HYBAS_ID")
   ContinuousVariables <- c("bio01","bio12","gHM","elevation","NDVI","Average_Radiance")
+  FieldVars <- c("FastqID","Sample Date","Latitude","Longitude","Spatial Uncertainty")
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
   
-  #Read in parsed Tronko database.
-  TronkoInput <- system(paste("aws s3 cp s3://ednaexplorer/projects/",sample_ProjectID,"/",sample_Primer,"/Taxa_Parsed.tsv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  TronkoInput <- read.table(text = TronkoInput,header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
+  #Establish sql connection
+  Database_Driver <- dbDriver("SQLite")
+  db_host <- ""
+  db_port <- 
+  db_name <- ""
+  db_user <- ""
+  db_pass <- ""
   
-  #Coerce data type.
+  #Read in metadata and filter it.
+  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
+  Metadata <- tbl(con,"TronkoMetadata")
+  Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
+  Metadata <- Metadata %>% filter(`Sample Date` >= sample_First_Date & `Sample Date` <= sample_Last_Date) %>%
+    filter(`ProjectID` == sample_ProjectID) %>% filter(!is.na(Latitude) & !is.na(Longitude)) %>% select(Keep_Vars)
+  Metadata <- as.data.frame(Metadata)
+  dbDisconnect(con)
+  
+  #Create sample metadata matrix
+  Sample <- Metadata[!is.na(Metadata$FastqID),]
+  rownames(Sample) <- Sample$FastqID
+  Sample$FastqID <- NULL
+  Sample <- sample_data(Sample)
+  remaining_Samples <- rownames(Sample)
+  
+  #Read in Tronko output and filter it.
+  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
+  TronkoInput <- tbl(con,"TronkoOutput")
+  TronkoInput <- TronkoInput %>% filter(`ProjectID` == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
+    filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
+    group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
+    select(SampleID,sample_TaxonomicRank)
   TronkoDB <- as.data.frame(TronkoInput)
+  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]
+  dbDisconnect(con)
   
-  #Filter by maximum number of read mismatches.
-  TronkoDB <- TronkoDB[TronkoDB$Mismatch <= sample_Num_Mismatch & !is.na(TronkoDB$Mismatch),]
-  
-  #Read in Metadata
-  Metadata <- system(paste("aws s3 cp s3://ednaexplorer/projects/",sample_ProjectID,"/Metadata.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  Metadata <- read.table(text = Metadata,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
-  #Set date type
-  Metadata$sample_date <- as.Date(lubridate::ymd(Metadata$sample_date))
-  
-  #Create Phyloseq object
-  #Create a taxonomic id matrix.
-  taxmat <- TronkoDB[,c("Taxonomic_Path",TaxonomicRanks)]
-  taxmat <- taxmat[!duplicated(taxmat),]
-  rownames(taxmat) <- taxmat$Taxonomic_Path
-  taxmat <- as.matrix(taxmat[,TaxonomicRanks])
-  TAX = suppressWarnings(tax_table(taxmat))
   #Create OTU matrix
-  otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID","Taxonomic_Path")])), names_from = SampleID, values_from = Freq))
-  rownames(otumat) <- otumat$Taxonomic_Path
+  otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
+  rownames(otumat) <- otumat[,sample_TaxonomicRank]
   otumat <- otumat[,colnames(otumat) %in% unique(TronkoDB$SampleID)]
   otumat[sapply(otumat, is.character)] <- lapply(otumat[sapply(otumat, is.character)], as.numeric)
   OTU <- otu_table(as.matrix(otumat), taxa_are_rows = TRUE)
-  #Create sample metadata matrix
-  Sample <- Metadata[,colnames(Metadata) %in% c("sample_id","sample_date",CategoricalVariables,ContinuousVariables)]
-  Sample <- Sample[!duplicated(Sample),]
-  rownames(Sample) <- Sample$sample_id
-  Sample$SampleID <- NULL
-  Sample <- sample_data(Sample)
+  
   #Create merged Phyloseq object.
-  physeq <- phyloseq(OTU,TAX,Sample)
-  
-  #Filter eDNA data by date range and primers
-  physeq <- subset_samples(physeq,sample_date >= sample_First_Date & sample_date <= sample_Last_Date)
-  
-  #Aggregate reads to a particular taxonomic level.
-  physeq <- tax_glom(physeq,taxrank=sample_TaxonomicRank)
-  
-  #Filter on read counts.
-  if(sum(sample_sums(physeq)>sample_CountThreshold)==0){
-    sample_CountThreshold <<- min(sample_sums(physeq))
-  }
-  CountFilter <- prune_samples(sample_sums(physeq)>sample_CountThreshold, physeq)
+  physeq <- phyloseq(OTU,Sample)
+  CountFilter <- physeq
   
   #Filter on read abundance per sample.
   tmpFilter  = transform_sample_counts(CountFilter, function(x) x / sum(x) )
