@@ -10,6 +10,10 @@ require(ggplot2)
 require(gbifdb)
 require(lubridate)
 require(jsonlite)
+require(data.table)
+require(DBI)
+require(RSQLite)
+require(digest)
 
 Sys.setenv("AWS_ACCESS_KEY_ID" = "e9190baae65b40a38bf43ade883b04a6",
            "AWS_SECRET_ACCESS_KEY" = "7aa129a7d84744efa76183cc9cf4b0a5")
@@ -26,41 +30,50 @@ Sys.setenv("AWS_ACCESS_KEY_ID" = "e9190baae65b40a38bf43ade883b04a6",
 #* @param Geographic_Scale:string Local, State, or Nation
 #* @get /venn
 venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,Geographic_Scale){
+  CategoricalVariables <- c("grtgroup","biome_type","IUCN_CAT","ECO_NAME","HYBAS_ID")
+  ContinuousVariables <- c("bio01","bio12","gHM","elevation","NDVI","Average_Radiance")
+  FieldVars <- c("FastqID","Sample Date","Latitude","Longitude","Spatial Uncertainty")
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
+  First_Date <- as.numeric(as.POSIXct(First_Date))
+  Last_Date <- as.numeric(as.POSIXct(Last_Date))
+  Num_Mismatch <- as.numeric(Num_Mismatch)
+  CountThreshold <- as.numeric(CountThreshold)
+  FilterThreshold <- as.numeric(FilterThreshold)
   
-  Primer <- Marker
-  #Read in parsed Tronko database.
-  TronkoInput <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/",Primer,"/Taxa_Parsed.tsv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  TronkoInput <- read.table(text = TronkoInput,header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
+  #Establish sql connection
+  Database_Driver <- dbDriver("SQLite")
+  db_host <- "db.jfsudbghjnulaznuohbj.supabase.co"
+  db_port <- 5432
+  db_name <- "postgres"
+  db_user <- "postgres"
+  db_pass <- "Bazjic-xanbog-hokma2"
   
-  #Coerce data type.
+  #Read in metadata and filter it.
+  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
+  Metadata <- tbl(con,"TronkoMetadata")
+  Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
+  Metadata <- Metadata %>% filter(`Sample Date` >= First_Date & `Sample Date` <= Last_Date) %>%
+    filter(`ProjectID` == ProjectID) %>% filter(!is.na(Latitude) & !is.na(Longitude)) %>% select(Keep_Vars)
+  Metadata <- as.data.frame(Metadata)
+  dbDisconnect(con)
+  
+  #Read in Tronko output and filter it.
+  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
+  TronkoInput <- tbl(con,"TronkoOutput")
+  TronkoInput <- TronkoInput %>% filter(`ProjectID` == ProjectID) %>% filter(Primer == Marker) %>% 
+    filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
+    group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
+    select(SampleID,kingdom,TaxonomicRank)
   TronkoDB <- as.data.frame(TronkoInput)
-  
-  #Filter by maximum number of read mismatches.
-  TronkoDB <- TronkoDB[TronkoDB$Mismatch <= Num_Mismatch & !is.na(TronkoDB$Mismatch),]
-  
-  #Read in Metadata
-  Metadata <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/Metadata.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  Metadata <- read.table(text = Metadata,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
-  #Set date type
-  Metadata$sample_date <- as.Date(lubridate::ymd(Metadata$sample_date))
-  
-  #Filter metadata by date range.
-  First_Date <- as.Date(lubridate::ymd(First_Date))
-  Last_Date <- as.Date(lubridate::ymd(Last_Date))
-  Metadata <- Metadata[Metadata$sample_date >= First_Date & Metadata$sample_date <= Last_Date,]
-  
-  #Filter Tronko-assign data by remaining samples.
-  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% Metadata$sample_id,]
-  
-  #Filter Tronko-assign by read counts per sample
-  TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID) %>% dplyr::filter(n() > CountThreshold)
+  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$FastqID)),]
+  dbDisconnect(con)
   
   #Filter by relative abundance per taxon per sample.
   TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
   TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
     dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
     dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
+  TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
   TronkoDB <- as.data.frame(TronkoDB)
   
   #Get unique taxa list from Tronko-assign
@@ -75,10 +88,10 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   
   if(Geographic_Scale=="Local"){
     #Get local bounds for sample locations, add 0.5 degree buffer.
-    Local_East <- max(na.omit(Metadata$longitude))+0.5
-    Local_West <- min(na.omit(Metadata$longitude))-0.5
-    Local_South <- min(na.omit(Metadata$latitude))-0.5
-    Local_North <- max(na.omit(Metadata$latitude))+0.5
+    Local_East <- max(na.omit(Metadata$Longitude))+0.5
+    Local_West <- min(na.omit(Metadata$Longitude))-0.5
+    Local_South <- min(na.omit(Metadata$Latitude))-0.5
+    Local_North <- max(na.omit(Metadata$Latitude))+0.5
     
     #Clip GBIF occurrence locations by local boundaries.
     Taxa_Local <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
