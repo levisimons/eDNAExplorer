@@ -15,8 +15,8 @@ require(DBI)
 require(RSQLite)
 require(digest)
 
-Sys.setenv("AWS_ACCESS_KEY_ID" = "e9190baae65b40a38bf43ade883b04a6",
-           "AWS_SECRET_ACCESS_KEY" = "7aa129a7d84744efa76183cc9cf4b0a5")
+Sys.setenv("AWS_ACCESS_KEY_ID" = "",
+           "AWS_SECRET_ACCESS_KEY" = "")
 
 #* Echo the parameter that was sent in
 #* @param ProjectID:string Project ID
@@ -42,11 +42,11 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   
   #Establish sql connection
   Database_Driver <- dbDriver("SQLite")
-  db_host <- "db.jfsudbghjnulaznuohbj.supabase.co"
-  db_port <- 5432
-  db_name <- "postgres"
-  db_user <- "postgres"
-  db_pass <- "Bazjic-xanbog-hokma2"
+  db_host <- ""
+  db_port <- 
+  db_name <- ""
+  db_user <- ""
+  db_pass <- ""
   
   #Read in metadata and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
