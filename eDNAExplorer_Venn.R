@@ -12,7 +12,7 @@ require(lubridate)
 require(jsonlite)
 require(data.table)
 require(DBI)
-require(RSQLite)
+require(RPostgreSQL)
 require(digest)
 
 Sys.setenv("AWS_ACCESS_KEY_ID" = "",
@@ -30,30 +30,32 @@ Sys.setenv("AWS_ACCESS_KEY_ID" = "",
 #* @param Geographic_Scale:string Local, State, or Nation
 #* @get /venn
 venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,Geographic_Scale){
-  CategoricalVariables <- c("grtgroup","biome_type","IUCN_CAT","ECO_NAME","HYBAS_ID")
-  ContinuousVariables <- c("bio01","bio12","gHM","elevation","NDVI","Average_Radiance")
-  FieldVars <- c("FastqID","Sample Date","Latitude","Longitude","Spatial Uncertainty")
+  #CategoricalVariables <- c("grtgroup","biome_type","IUCN_CAT","ECO_NAME","HYBAS_ID")
+  #ContinuousVariables <- c("bio01","bio12","gHM","elevation","NDVI","Average_Radiance")
+  #FieldVars <- c("FastqID","Sample Date","Latitude","Longitude","Spatial Uncertainty")
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-  First_Date <- as.numeric(as.POSIXct(First_Date))
-  Last_Date <- as.numeric(as.POSIXct(Last_Date))
+  #First_Date <- as.numeric(as.POSIXct(First_Date))
+  #Last_Date <- as.numeric(as.POSIXct(Last_Date))
+  First_Date <- lubridate::ymd(First_Date)
+  Last_Date <- lubridate::ymd(Last_Date)
   Num_Mismatch <- as.numeric(Num_Mismatch)
   CountThreshold <- as.numeric(CountThreshold)
   FilterThreshold <- as.numeric(FilterThreshold)
   
   #Establish sql connection
-  Database_Driver <- dbDriver("SQLite")
   db_host <- ""
   db_port <- 
   db_name <- ""
   db_user <- ""
   db_pass <- ""
+  Database_Driver <- dbDriver("PostgreSQL")
   
   #Read in metadata and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   Metadata <- tbl(con,"TronkoMetadata")
-  Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
-  Metadata <- Metadata %>% filter(`Sample Date` >= First_Date & `Sample Date` <= Last_Date) %>%
-    filter(`ProjectID` == ProjectID) %>% filter(!is.na(Latitude) & !is.na(Longitude)) %>% select(Keep_Vars)
+  #Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
+  Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date) %>%
+    filter(`ProjectID` == ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude))
   Metadata <- as.data.frame(Metadata)
   dbDisconnect(con)
   
@@ -65,7 +67,7 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
     select(SampleID,kingdom,TaxonomicRank)
   TronkoDB <- as.data.frame(TronkoInput)
-  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$FastqID)),]
+  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]
   dbDisconnect(con)
   
   #Filter by relative abundance per taxon per sample.
@@ -83,15 +85,15 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   gbif <- gbif_local()
   
   #Get unique states and nations in project.
-  country_list <- na.omit(unique(Metadata$Nation))
-  state_province_list <- na.omit(unique(Metadata$State))
+  country_list <- na.omit(unique(Metadata$nation))
+  state_province_list <- na.omit(unique(Metadata$state))
   
   if(Geographic_Scale=="Local"){
     #Get local bounds for sample locations, add 0.5 degree buffer.
-    Local_East <- max(na.omit(Metadata$Longitude))+0.5
-    Local_West <- min(na.omit(Metadata$Longitude))-0.5
-    Local_South <- min(na.omit(Metadata$Latitude))-0.5
-    Local_North <- max(na.omit(Metadata$Latitude))+0.5
+    Local_East <- max(na.omit(Metadata$longitude))+0.5
+    Local_West <- min(na.omit(Metadata$longitude))-0.5
+    Local_South <- min(na.omit(Metadata$latitude))-0.5
+    Local_North <- max(na.omit(Metadata$latitude))+0.5
     
     #Clip GBIF occurrence locations by local boundaries.
     Taxa_Local <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
