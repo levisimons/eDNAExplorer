@@ -16,7 +16,7 @@ require(plotly)
 require(jsonlite)
 require(data.table)
 require(DBI)
-require(RSQLite)
+require(RPostgreSQL)
 require(digest)
 
 Sys.setenv("AWS_ACCESS_KEY_ID" = "",
@@ -38,8 +38,8 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   
   #Define filters in Phyloseq as global parameters.
   sample_ProjectID <<- as.character(ProjectID)
-  sample_First_Date <<- as.numeric(as.POSIXct(First_Date))
-  sample_Last_Date <<- as.numeric(as.POSIXct(Last_Date))
+  sample_First_Date <<- lubridate::ymd(First_Date)
+  sample_Last_Date <<- lubridate::ymd(Last_Date)
   sample_Primer <<- as.character(Marker)
   sample_TaxonomicRank <<- as.character(TaxonomicRank)
   sample_Num_Mismatch <<- as.numeric(Num_Mismatch)
@@ -48,32 +48,33 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   EnvironmentalVariable <<- as.character(EnvironmentalParameter)
   BetaDiversityMetric <<- as.character(BetaDiversity)
   
-  CategoricalVariables <- c("grtgroup","biome_type","IUCN_CAT","ECO_NAME","HYBAS_ID")
-  ContinuousVariables <- c("bio01","bio12","gHM","elevation","NDVI","Average_Radiance")
-  FieldVars <- c("FastqID","Sample Date","Latitude","Longitude","Spatial Uncertainty")
+  CategoricalVariables <- c("grtgroup","biome_type","iucn_Cat","eco_name","hybas_id")
+  ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
+  FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
   
   #Establish sql connection
-  Database_Driver <- dbDriver("SQLite")
   db_host <- ""
   db_port <- 
   db_name <- ""
   db_user <- ""
   db_pass <- ""
+  Database_Driver <- dbDriver("PostgreSQL")
+  sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Read in metadata and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   Metadata <- tbl(con,"TronkoMetadata")
   Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
-  Metadata <- Metadata %>% filter(`Sample Date` >= sample_First_Date & `Sample Date` <= sample_Last_Date) %>%
-    filter(`ProjectID` == sample_ProjectID) %>% filter(!is.na(Latitude) & !is.na(Longitude)) %>% select(Keep_Vars)
+  Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date) %>%
+    filter(`ProjectID` == sample_ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
   Metadata <- as.data.frame(Metadata)
-  dbDisconnect(con)
+  sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Create sample metadata matrix
-  Sample <- Metadata[!is.na(Metadata$FastqID),]
-  rownames(Sample) <- Sample$FastqID
-  Sample$FastqID <- NULL
+  Sample <- Metadata[!is.na(Metadata$fastqid),]
+  rownames(Sample) <- Sample$fastqid
+  Sample$fastqid <- NULL
   Sample <- sample_data(Sample)
   remaining_Samples <- rownames(Sample)
   
@@ -86,7 +87,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     select(SampleID,sample_TaxonomicRank)
   TronkoDB <- as.data.frame(TronkoInput)
   TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]
-  dbDisconnect(con)
+  sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Create OTU matrix
   otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
