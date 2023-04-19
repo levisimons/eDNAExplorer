@@ -1,40 +1,44 @@
 rm(list=ls())
 require(tidyr)
-require(dplyr)
 require(sf)
 require(sp)
 require(lubridate)
 require(httr)
+require(curl)
+httr::set_config(httr::config(http_version = 2))
+curl::handle_setopt(new_handle(),http_version=2)
 require(gbifdb)
 require(jsonlite)
 require(rgbif)
-require(duckdb)
-require(aws.s3)
 require(data.table)
+require(dplyr)
+require(DBI)
+require(RPostgreSQL)
+require(digest)
 
-## This script should run automatically once a project's metadata and sequence data are uploaded.
-#1. Parse Tronko output into a taxa by sample dataframe.
-#Calculate the traditional observation score between eDNA and GBIF data per taxon. Merge in environmental metadata.
-#2. Update taxon to icon database for web graphics.
-##
+Sys.setenv("AWS_ACCESS_KEY_ID" = "","AWS_SECRET_ACCESS_KEY" = "")
 
 ProjectID <- "LARiverRound1" #This is hard-coded for now.
 
 #Read in initial metadata.
 Metadata_Initial <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/InputMetadata.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-Metadata_Initial <- read.table(text = Metadata_Initial,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
-Metadata_Initial$sample_date <- lubridate::ymd(Metadata_Initial$sample_date)
+Metadata_Initial <- read.table(text = Metadata_Initial,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+Metadata_Initial$`Sample Date` <- lubridate::mdy(Metadata_Initial$`Sample Date`)
 #Get field variables from initial metadata.
-Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% c("sample_id","longitude","latitude","sample_date","spatial_uncertainty"))]
+Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% c("Sample ID","Longitude","Latitude","Sample Date","Spatial Uncertainty"))]
 #Read in extracted metadata.
 Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
-Metadata_Extracted$sample_date <- lubridate::ymd_hms(Metadata_Extracted$sample_date)
-names(Metadata_Extracted)[names(Metadata_Extracted) == 'name'] <- 'sample_id'
+Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+Metadata_Extracted$Sample_Date <- lubridate::ymd_hms(Metadata_Extracted$Sample_Date)
+
 #Merge metadata
-Metadata <- dplyr::left_join(Metadata_Initial[,c("sample_id","sample_date","latitude","longitude","spatial_uncertainty",Field_Variables)],Metadata_Extracted)
-#Clean up date format.
-Metadata$sample_date <- as.Date(lubridate::ymd(Metadata$sample_date))
+Metadata <- dplyr::left_join(Metadata_Initial[,c("Sample ID","Sample Date","Latitude","Longitude","Spatial Uncertainty",Field_Variables)],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"))
+
+#Add project ID
+Metadata$ProjectID <- ProjectID
+
+#Add Fastq ID to make sure metadata and Tronko-assign output lines up.
+Metadata$FastqID <- gsub("_R.*","",Metadata$`Fastq Forward Reads Filename`)
 
 #Read in state/province boundaries.
 #Boundaries are from https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/
@@ -48,19 +52,51 @@ for(SpatialFile in SpatialFiles){
 }
 GADM_1_Boundaries <- sf::st_read("ne_10m_admin_1_states_provinces.shp")
 #Determine the unique list of national and state/proving boundaries sample locations cover.
-GADM_Boundaries <- st_join(st_as_sf(Metadata[!is.na(Metadata$latitude) & !is.na(Metadata$latitude),], coords = c("longitude", "latitude"), crs = 4326), GADM_1_Boundaries[c('iso_a2','woe_name')],join = st_intersects)
+GADM_Boundaries <- st_join(st_as_sf(Metadata[!is.na(Metadata$Latitude) & !is.na(Metadata$Latitude),], coords = c("Longitude", "Latitude"), crs = 4326), GADM_1_Boundaries[c('iso_a2','woe_name')],join = st_intersects)
 GADM_Boundaries <- GADM_Boundaries %>% st_drop_geometry()
-GADM_Boundaries <- as.data.frame(GADM_Boundaries[,c("sample_id","sample_date","iso_a2","woe_name")])
+GADM_Boundaries <- as.data.frame(GADM_Boundaries[,c("Sample ID","Sample Date","iso_a2","woe_name")])
 names(GADM_Boundaries)[names(GADM_Boundaries) == "woe_name"] <- "State"
 names(GADM_Boundaries)[names(GADM_Boundaries) == "iso_a2"] <- "Nation"
-names(GADM_Boundaries)[names(GADM_Boundaries) == "sample_id"] <- "SampleID"
-Metadata <- dplyr::left_join(Metadata,GADM_Boundaries,by=c("sample_id"="SampleID"))
+Metadata <- dplyr::left_join(Metadata,GADM_Boundaries,by=c("Sample ID","Sample Date"))
 country_list <- na.omit(unique(GADM_Boundaries$Nation))
 state_province_list <- na.omit(unique(GADM_Boundaries$State))
 
-#Save metadata.
-write.table(Metadata,"Metadata.csv",quote=FALSE,sep=",",row.names = FALSE)
-system(paste("aws s3 cp Metadata.csv s3://ednaexplorer/projects/",ProjectID,"/Metadata.csv --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+#Remove rows without an associated sequence file.
+Metadata <- Metadata[!is.na(Metadata$`Fastq Forward Reads Filename`) & !is.na(Metadata$`Fastq Reverse Reads Filename`),]
+
+#Generate unique code for each Tronko-assign output
+Metadata$UniqueID <- sapply(paste(Metadata$ProjectID,Metadata$FastqID,Metadata$`Sample Date`,Metadata$Latitude,Metadata$Longitude,Metadata$`Spatial Uncertainty`),digest,algo="md5")
+
+#Match metadata column names to format in SQL database.
+colnames(Metadata) <- gsub(" ","_",tolower(colnames(Metadata)))
+
+#Establish database credentials.
+db_host <- ""
+db_port <- 
+db_name <- ""
+db_user <- ""
+db_pass <- ""
+Database_Driver <- dbDriver("PostgreSQL")
+#Force close any possible postgreSQL connections.
+sapply(dbListConnections(Database_Driver), dbDisconnect)
+
+#Create Metadata database.
+con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
+
+#Check for redundant data.
+#Add new metadata.
+if(dbExistsTable(con,"TronkoMetadata")){
+  Metadata_Check <-  tbl(con,"TronkoMetadata")
+  Metadata_IDs <- Metadata$uniqueid
+  Metadata_Check <- Metadata_Check %>% filter(uniqueid %in% Metadata_IDs)
+  Metadata_Check <- as.data.frame(Metadata_Check)
+  Metadata_Check_IDs <- Metadata_Check$uniqueid
+  Metadata_Append <- Metadata[!(Metadata_IDs %in% Metadata_Check_IDs),]
+  dbWriteTable(con,"TronkoMetadata",Metadata_Append,row.names=FALSE,append=TRUE)
+} else{
+  dbWriteTable(con,"TronkoMetadata",Metadata,row.names=FALSE,append=TRUE)
+}
+#RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
 
 #Read in GBIF occurrences.
 gbif <- gbif_local()
@@ -98,10 +134,9 @@ Taxa_Nation <- as.data.frame(Taxa_Nation)
 Taxa_Nation <- Taxa_Nation %>% dplyr:: mutate(Ecoregion_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
 
 #Get primers
-Markers <- setdiff(colnames(Metadata[,grepl("Marker_",colnames(Metadata))]),colnames(Metadata[,grepl("Marker_(.*?)_",colnames(Metadata))]))
+Markers <- setdiff(colnames(Metadata[,grepl("^marker_[[:digit:]]$",colnames(Metadata))]),colnames(Metadata[,grepl("marker_(.*?)_",colnames(Metadata))]))
 Primers <- unique(unlist(Metadata[,Markers]))
-j=1
-TronkoProject <- list()
+#Loop over primers to add Tronko-assign data to database, along with associate Phylopic metadata.
 for(Primer in Primers){
   #Read in Tronko-assign output files.  Standardize sample IDs within them.
   TronkoBucket <- system(paste("aws s3 ls s3://ednaexplorer/projects/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
@@ -124,7 +159,7 @@ for(Primer in Primers){
           colnames(header_row) <- TronkoHeaders
           colnames(TronkoInput) <- TronkoHeaders
         }
-        TronkoInput$SampleID <- gsub("\\..*","",basename(TronkoFile))
+        TronkoInput$SampleID <- gsub(".*[_]([^.]+)[.].*", "\\1", basename(TronkoFile))
         TronkoInputs[[i]] <- TronkoInput
         i=i+1
       }
@@ -133,11 +168,12 @@ for(Primer in Primers){
   TronkoInputs <- rbindlist(TronkoInputs, use.names=TRUE, fill=TRUE)
   
   TronkoDB <- as.data.frame(TronkoInputs)
+  #Remove reads with non-assigned scores.
+  TronkoDB$Score <- as.numeric(TronkoDB$Score)
+  TronkoDB <- TronkoDB[!is.na(TronkoDB$Score),]
   
   #Standardize taxonomy naming schema.
   TronkoDB$sum.taxonomy <- TronkoDB$Taxonomic_Path
-  
-  TronkoDB$ProjectID <- ProjectID
   
   #Set taxonomic rank column names.
   TaxonomicRanks <- c("superkingdom","phylum","class","order","family","genus","species")
@@ -153,16 +189,18 @@ for(Primer in Primers){
   TronkoDB$Reverse_Mismatch <- as.numeric(TronkoDB$Reverse_Mismatch)
   TronkoDB <- TronkoDB %>% mutate(Mismatch = rowSums(select(., Forward_Mismatch, Reverse_Mismatch), na.rm = TRUE))
   print(paste(Primer,"Mismatches calculated"))
+  
   #Get kingdom data for phyla from GBIF, if available.
   Phylum_to_Kingdom <- list()
   i=1
   for(phylum in na.omit(unique(TronkoDB$phylum))){
-    Taxon_GBIF <- name_backbone(phylum,verbose=T,strict=F)
+    Taxon_GBIF <- name_backbone(phylum,verbose=T,strict=F,curlopts=list(http_version=2))
+    print(paste(Primer,i,phylum))
     Taxon_GBIF <- Taxon_GBIF[Taxon_GBIF$matchType!="NONE",]
     if(!("kingdom" %in% colnames(Taxon_GBIF))){
       test_class <- names(sort(table(TronkoDB[TronkoDB$phylum==phylum,"class"]),decreasing=TRUE)[1])
       if(!is.null(test_class)){
-        Taxon_GBIF <- name_backbone(test_class,verbose=T,strict=F)
+        Taxon_GBIF <- name_backbone(test_class,verbose=T,strict=F,curlopts=list(http_version=2))
         Taxon_GBIF <- Taxon_GBIF[Taxon_GBIF$matchType!="NONE",]
       }
     }
@@ -175,7 +213,6 @@ for(Primer in Primers){
       tmp$kingdom <- NA
     }
     Phylum_to_Kingdom[[i]] <- tmp
-    print(paste(Primer,i,phylum))
     i=i+1
   }
   Phylum_to_Kingdom <- rbindlist(Phylum_to_Kingdom, use.names=TRUE, fill=TRUE)
@@ -185,151 +222,147 @@ for(Primer in Primers){
   
   #Count eDNA taxonomic resolution and weigh them.
   #Species = 4, Genus = 2, Family = 1.  Everything else = 0.
-  TronkoDB$eDNAWeight <- 1*as.numeric(!is.na(TronkoDB$family))+2*as.numeric(!is.na(TronkoDB$genus))+4*as.numeric(!is.na(TronkoDB$species))
+  tmp <- TronkoDB[,c("family","genus","species")]
+  tmp <- tmp[!duplicated(tmp),]
+  tmp$eDNAWeight <- 1*as.numeric(!is.na(tmp$family))+2*as.numeric(!is.na(tmp$genus))+4*as.numeric(!is.na(tmp$species))
   
   #Check if any of the eDNA reads show up in the local set of GBIF family observations.
-  TronkoDB$LocalFamilyPresentGBIF <- as.numeric(lapply(TronkoDB$family,is.element,unique(na.omit(Taxa_Local$family))))
+  tmp$LocalFamilyPresentGBIF <- as.numeric(lapply(tmp$family,is.element,unique(na.omit(Taxa_Local$family))))
   #Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
-  TronkoDB$StateFamilyPresentGBIF <- as.numeric(lapply(TronkoDB$family,is.element,unique(na.omit(Taxa_State$family))))
+  tmp$StateFamilyPresentGBIF <- as.numeric(lapply(tmp$family,is.element,unique(na.omit(Taxa_State$family))))
   #Check if any of the eDNA reads show up in the realm set of GBIF family observations.
-  TronkoDB$NationFamilyPresentGBIF <- as.numeric(lapply(TronkoDB$family,is.element,unique(na.omit(Taxa_Nation$family))))
+  tmp$NationFamilyPresentGBIF <- as.numeric(lapply(tmp$family,is.element,unique(na.omit(Taxa_Nation$family))))
   #Check if any of the eDNA reads show up in the local set of GBIF family observations.
-  TronkoDB$LocalGenusPresentGBIF <- as.numeric(lapply(TronkoDB$genus,is.element,unique(na.omit(Taxa_Local$genus))))
+  tmp$LocalGenusPresentGBIF <- as.numeric(lapply(tmp$genus,is.element,unique(na.omit(Taxa_Local$genus))))
   #Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
-  TronkoDB$StateGenusPresentGBIF <- as.numeric(lapply(TronkoDB$genus,is.element,unique(na.omit(Taxa_State$genus))))
+  tmp$StateGenusPresentGBIF <- as.numeric(lapply(tmp$genus,is.element,unique(na.omit(Taxa_State$genus))))
   #Check if any of the eDNA reads show up in the realm set of GBIF genus observations.
-  TronkoDB$NationGenusPresentGBIF <- as.numeric(lapply(TronkoDB$genus,is.element,unique(na.omit(Taxa_Nation$genus))))
+  tmp$NationGenusPresentGBIF <- as.numeric(lapply(tmp$genus,is.element,unique(na.omit(Taxa_Nation$genus))))
   #Check if any of the eDNA reads show up in the local set of GBIF family observations.
-  TronkoDB$LocalSpeciesPresentGBIF <- as.numeric(lapply(TronkoDB$species,is.element,unique(na.omit(Taxa_Local$species))))
+  tmp$LocalSpeciesPresentGBIF <- as.numeric(lapply(tmp$species,is.element,unique(na.omit(Taxa_Local$species))))
   #Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
-  TronkoDB$StateSpeciesPresentGBIF <- as.numeric(lapply(TronkoDB$species,is.element,unique(na.omit(Taxa_State$species))))
+  tmp$StateSpeciesPresentGBIF <- as.numeric(lapply(tmp$species,is.element,unique(na.omit(Taxa_State$species))))
   #Check if any of the eDNA reads show up in the realm set of GBIF genus observations.
-  TronkoDB$NationSpeciesPresentGBIF <- as.numeric(lapply(TronkoDB$species,is.element,unique(na.omit(Taxa_Nation$species))))
+  tmp$NationSpeciesPresentGBIF <- as.numeric(lapply(tmp$species,is.element,unique(na.omit(Taxa_Nation$species))))
   
   #Assign TOS scores for GBIF results.
-  TronkoDB$TOS_Local <- (1*TronkoDB$LocalFamilyPresentGBIF+2*TronkoDB$LocalGenusPresentGBIF+4*TronkoDB$LocalSpeciesPresentGBIF)/TronkoDB$eDNAWeight
-  TronkoDB$TOS_State <- (1*TronkoDB$StateFamilyPresentGBIF+2*TronkoDB$StateGenusPresentGBIF+4*TronkoDB$StateSpeciesPresentGBIF)/TronkoDB$eDNAWeight
-  TronkoDB$TOS_Nation <- (1*TronkoDB$NationFamilyPresentGBIF+2*TronkoDB$NationGenusPresentGBIF+4*TronkoDB$NationSpeciesPresentGBIF)/TronkoDB$eDNAWeight
+  tmp$TOS_Local <- (1*tmp$LocalFamilyPresentGBIF+2*tmp$LocalGenusPresentGBIF+4*tmp$LocalSpeciesPresentGBIF)/tmp$eDNAWeight
+  tmp$TOS_State <- (1*tmp$StateFamilyPresentGBIF+2*tmp$StateGenusPresentGBIF+4*tmp$StateSpeciesPresentGBIF)/tmp$eDNAWeight
+  tmp$TOS_Nation <- (1*tmp$NationFamilyPresentGBIF+2*tmp$NationGenusPresentGBIF+4*tmp$NationSpeciesPresentGBIF)/tmp$eDNAWeight
   is.nan.data.frame <- function(x)
     do.call(cbind, lapply(x, is.nan))
-  TronkoDB[is.nan(TronkoDB)] <- 0
+  tmp[is.nan(tmp)] <- 0
   print(paste(Primer,"TOS scores added"))
+  
+  #Merge in TOS results.
+  TronkoDB <- dplyr::left_join(TronkoDB,tmp,by=c("family","genus","species"))
+  
   TronkoDB$Primer <- Primer
-  #Save Tronko-assign data set.
-  Retained_Columns <- c("Taxonomic_Path","Score","SampleID","superkingdom","kingdom",
-                        "phylum","class","order","family","genus","species","Primer",
+  TronkoDB$ProjectID <- ProjectID
+  #Save Tronko-assign data set on a per project/primer basis.
+  Retained_Columns <- c("ProjectID","Primer","Taxonomic_Path","Score","SampleID","superkingdom","kingdom",
+                        "phylum","class","order","family","genus","species","Readname",
                         "Mismatch","TOS_Local","TOS_State","TOS_Nation")
-  write.table(TronkoDB[Retained_Columns],"Taxa_Parsed.tsv",quote=FALSE,sep="\t",row.names = FALSE)
-  system(paste("aws s3 cp Taxa_Parsed.tsv s3://ednaexplorer/projects/",ProjectID,"/",Primer,"/Taxa_Parsed.tsv --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-  #Save all of the Tronko-assign data from a project.
-  TronkoProject[[j]] <- TronkoDB[,c("superkingdom","kingdom","phylum","class","order","family","genus","species")]
-  j=j+1
-}
-#Get all Tronko-assign taxa information for a project.
-TronkoProject <- data.table::rbindlist(TronkoProject,use.names=TRUE, fill=TRUE)
-TronkoProject <- as.data.frame(TronkoProject)
-
-#Check existing Phylopic database
-check_PhylopicDB <- suppressWarnings(system("aws s3 ls s3://ednaexplorer/PhylopicDB.tsv --endpoint-url https://js2.jetstream-cloud.org:8001/",intern=T))
-#Get taxa which have already been added to the Phylopic database.
-if(length(check_PhylopicDB>0)){
-  PhylopicDB_Initial <- system("aws s3 cp s3://ednaexplorer/PhylopicDB.tsv - --endpoint-url https://js2.jetstream-cloud.org:8001/",intern=TRUE)
-  PhylopicDB_Initial <- read.table(text = paste(PhylopicDB_Initial,sep = "\t"),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
-  Taxa_Completed <- unique(na.omit(PhylopicDB_Initial$Taxon))
-  usageKey_Completed <- unique(na.omit(PhylopicDB_Initial$usageKey))
-  Common_Names_Initial <- PhylopicDB_Initial[,c("usageKey","Common_Name")]
-  Common_Names_Initial <- as.data.frame(Common_Names_Initial[!duplicated(Common_Names_Initial),])
-} else {
-  PhylopicDB_Initial <- data.frame()
-  Taxa_Completed <- c()
-  usageKey_Completed <- c()
-  Common_Names_Initial <- data.frame()
-}
-
-#Get unique taxa list.
-Unique_Taxa_df <- as.data.frame(unlist(TronkoProject))
-colnames(Unique_Taxa_df) <- c("Taxon")
-Unique_Taxa_df$TaxonomicRankImage <- rownames(Unique_Taxa_df)
-Unique_Taxa_df$TaxonomicRankImage <- gsub('[[:digit:]]+', '', Unique_Taxa_df$TaxonomicRankImage)
-Unique_Taxa_df$rank <- toupper(Unique_Taxa_df$TaxonomicRankImage)
-Unique_Taxa_df$rank <- gsub('SUPERKINGDOM', 'KINGDOM', Unique_Taxa_df$rank)
-Unique_Taxa_df <- Unique_Taxa_df[complete.cases(Unique_Taxa_df),]
-Unique_Taxa_df <- Unique_Taxa_df[Unique_Taxa_df$Taxon!="unassigned",]
-Unique_Taxa_df <- Unique_Taxa_df[!duplicated(Unique_Taxa_df),]
-Unique_Taxa <- unique(na.omit(Unique_Taxa_df$Taxon))
-Unique_Taxa <- Unique_Taxa[!(Unique_Taxa %in% Taxa_Completed)]
-
-#Get unique Phylopic icons for each taxon.  If one does not exist, keep moving up a taxonomic level until an icon does exist.
-TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-PhylopicDB <- list()
-PhylopicDB[[1]] <- PhylopicDB_Initial
-i=1
-for(Unique_Taxon in Unique_Taxa){
-  Taxon_GBIF <- name_backbone(Unique_Taxon,verbose=T,strict=F)
-  Taxon_GBIF <- Taxon_GBIF[Taxon_GBIF$matchType!="NONE",]
-  if(nrow(Taxon_GBIF)>0){
-    Taxon_Backbone <- as.numeric(na.omit(rev(unlist(Taxon_GBIF[1,unique(grep(paste(TaxonomicRanks,collapse="|"),colnames(Taxon_GBIF[,grepl("Key",names(Taxon_GBIF))]), value=TRUE))]))))
-    Taxon_Keys <- as.data.frame(Taxon_GBIF[1,!(colnames(Taxon_GBIF) %in% TaxonomicRanks)])
+  
+  TronkoProject <- as.data.frame(TronkoDB[,Retained_Columns])
+  
+  #Generate unique code for each Tronko-assign output
+  TronkoProject$UniqueID <- sapply(paste(TronkoProject$ProjectID,TronkoProject$Primer,TronkoProject$Taxonomic_Path,TronkoProject$SampleID,TronkoProject$Score,TronkoProject$Mismatch,TronkoProject$Readname),digest,algo="md5")
+  
+  #Create Tronko output database.
+  #con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
+  
+  #Check for redundant data.
+  #Add only new data.
+  chunk <- 10000
+  chunks <- split(1:nrow(TronkoProject), ceiling(seq_along(1:nrow(TronkoProject))/chunk))
+  TronkoInput <-  tbl(con,"TronkoOutput")
+  if(dbExistsTable(con,"TronkoOutput")==TRUE){
+    for(i in 1:ceiling(nrow(TronkoProject)/chunk)){
+      TronkoProject_Subset <- TronkoProject[min(chunks[[i]]):max(chunks[[i]]),]
+      Tronko_IDs <- TronkoProject_Subset$UniqueID
+      Tronko_Check <- TronkoInput %>% filter(UniqueID %in% Tronko_IDs)
+      Tronko_Check <- as.data.frame(Tronko_Check)
+      Tronko_Check_IDs <- Tronko_Check$UniqueID
+      TronkoProject_Subset <- TronkoProject_Subset[!(Tronko_IDs %in% Tronko_Check_IDs),]
+      dbWriteTable(con,"TronkoOutput",TronkoProject_Subset,row.names=FALSE,append=TRUE)
+    }
+  } 
+  if(dbExistsTable(con,"TronkoOutput")==FALSE){
+    for(i in 1:ceiling(nrow(TronkoProject)/chunk)){
+      dbWriteTable(con,"TronkoOutput",TronkoProject[min(chunks[[i]]):max(chunks[[i]]),],row.names=FALSE,append=TRUE)
+    }
+  }
+  #RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
+  
+  #Create database of Phylopic images and common names for taxa.
+  TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
+  TaxonomicKeyRanks <- c("speciesKey","genusKey","familyKey","orderKey","classKey","phylumKey","kingdomKey")
+  TaxaDB <- TronkoDB[,TaxonomicRanks]
+  TaxaDB <- TaxaDB[!duplicated(TaxaDB),]
+  TaxaDB$Taxon <- TaxaDB[cbind(1:nrow(TaxaDB), max.col(!is.na(TaxaDB), ties.method = 'last'))]
+  TaxaDB$rank <- TaxonomicRanks[max.col(!is.na(TaxaDB[TaxonomicRanks]), ties.method="last")]
+  
+  GBIF_Keys <- c()
+  for(i in 1:nrow(TaxaDB)){
+    GBIF_Key <- TaxaDB[i,]
+    if(is.na(GBIF_Key$kingdom)){GBIF_Key$kingdom <- GBIF_Key$superkingdom}
+    tmp <- name_backbone(name=GBIF_Key$Taxon,rank=GBIF_Key$rank,genus=GBIF_Key$genus,
+                         family=GBIF_Key$family,order=GBIF_Key$order,
+                         class=GBIF_Key$class,phylum=GBIF_Key$phylum,kingdom=GBIF_Key$kingdom,curlopts=list(http_version=2))
+    GBIF_Key <- cbind(GBIF_Key,as.data.frame(tmp[,colnames(tmp) %in% TaxonomicKeyRanks]))
+    #Get GBIF backbone for querying Phylopic images
+    Taxon_Backbone <- as.numeric(na.omit(rev(unlist(GBIF_Key[,colnames(GBIF_Key) %in% TaxonomicKeyRanks]))))
+    #Get Phylopic images for each taxon
+    
     if(length(Taxon_Backbone)>1){
-      res <- httr::POST(url="https://api.phylopic.org/resolve/gbif.org/species?embed_primaryImage=true",body=jsonlite::toJSON(as.character(Taxon_Backbone), auto_unbox=TRUE),content_type("application/json"),encode="json",http_version=2)
+      res <- httr::POST(url="https://api.phylopic.org/resolve/gbif.org/species?embed_primaryImage=true",body=jsonlite::toJSON(as.character(Taxon_Backbone), auto_unbox=TRUE),content_type("application/json"),encode="json")
     } else{
-      res <- httr::POST(url="https://api.phylopic.org/resolve/gbif.org/species?embed_primaryImage=true",body=jsonlite::toJSON(as.character(Taxon_Backbone), auto_unbox=FALSE),content_type("application/json"),encode="json",http_version=2)
+      res <- httr::POST(url="https://api.phylopic.org/resolve/gbif.org/species?embed_primaryImage=true",body=jsonlite::toJSON(as.character(Taxon_Backbone), auto_unbox=FALSE),content_type("application/json"),encode="json")
     }
     test <- fromJSON(rawToChar(res$content))
     Taxon_Image <- test[["_embedded"]][["primaryImage"]][["_links"]][["rasterFiles"]][["href"]][[1]]
     if(is.null(Taxon_Image)){
       Taxon_Image <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
     }
-  } else{
-    Taxon_Image <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
-    Taxon_Keys <- data.frame(matrix(nrow=1,ncol=1))
-    colnames(Taxon_Keys) <- c("usageKey")
-    Taxon_Keys$usageKey <- 0
+    print(paste(i,Taxon_Image))
+    #Get common names if available
+    if(length(na.omit(Taxon_Backbone))==0){Common_Name <- NA}
+    if(length(na.omit(Taxon_Backbone))>0){
+      Common_Name <- as.data.frame(name_usage(key=max(na.omit(Taxon_Backbone)),rank=GBIF_Key[1,"rank"], data="vernacularNames",curlopts=list(http_version=2))$data)
+      if(nrow(Common_Name)>0){
+        Common_Name <- Common_Name[Common_Name$language=="eng",]
+        Common_Name <- Common_Name[1,"vernacularName"]
+      } else {
+        Common_Name <- NA
+      }
+    }
+    GBIF_Key$Common_Name <- Common_Name
+    GBIF_Key$Image_URL <- Taxon_Image
+    GBIF_Keys[[i]] <- GBIF_Key
   }
-  tmp <- data.frame(matrix(nrow=1,ncol=2))
-  colnames(tmp) <- c("Taxon","Image_URL")
-  tmp$Taxon <- Unique_Taxon
-  tmp$Image_URL <- Taxon_Image
-  tmp <- cbind(tmp,Taxon_Keys)
-  print(paste(Primer,i,length(Unique_Taxa)))
-  i=i+1
-  PhylopicDB[[i]] <- tmp
-}
-PhylopicDB <- data.table::rbindlist(PhylopicDB,use.names=TRUE, fill=TRUE)
-PhylopicDB <- as.data.frame(PhylopicDB)
-PhylopicDB <- dplyr::left_join(PhylopicDB,Unique_Taxa_df)
-print(paste(Primer,"Phylopics added"))
-#Get common names and merge them into Phylopic database.
-usageKey_All <- unique(na.omit(PhylopicDB$usageKey))
-usageKey_Remaining <- usageKey_All[!(usageKey_All %in% usageKey_Completed)]
-Common_Names <- list()
-Common_Names[[1]] <- Common_Names_Initial
-i=1
-for(key in usageKey_Remaining){
-  Common_Name <- as.data.frame(name_usage(key=key, data="vernacularNames")$data)
-  if(nrow(Common_Name)>0){
-    Common_Name <- Common_Name[Common_Name$language=="eng",]
-    Common_Name <- Common_Name[1,"vernacularName"]
-  } else {
-    Common_Name <- NA
+  
+  GBIF_Keys <- rbindlist(GBIF_Keys, use.names=TRUE, fill=TRUE)
+  GBIF_Keys <- as.data.frame(GBIF_Keys)
+  #Create unique ID for the Phylopic database.
+  GBIF_Keys$UniqueID <- sapply(paste(GBIF_Keys$Taxon,GBIF_Keys$rank),digest,algo="md5")
+  
+  #Check for redundant data.
+  #Add new Phylopic data.
+  #con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
+  if(dbExistsTable(con,"Taxonomy")==TRUE){
+    Phylopic_Check <-  tbl(con,"Taxonomy")
+    Phylopic_IDs <- GBIF_Keys$UniqueID
+    Phylopic_Check <- Phylopic_Check %>% filter(UniqueID %in% Phylopic_IDs)
+    Phylopic_Check <- as.data.frame(Phylopic_Check)
+    Phylopic_Check_IDs <- Phylopic_Check$UniqueID
+    Phylopic_Append <- GBIF_Keys[!(Phylopic_IDs %in% Phylopic_Check_IDs),]
+    dbWriteTable(con,"Taxonomy",Phylopic_Append,row.names=FALSE,append=TRUE)
+  } 
+  if(dbExistsTable(con,"Taxonomy")==FALSE){
+    dbWriteTable(con,"Taxonomy",GBIF_Keys,row.names=FALSE,append=TRUE)
   }
-  tmp <- data.frame(matrix(nrow=1,ncol=2))
-  colnames(tmp) <- c("usageKey","Common_Name")
-  tmp$usageKey <- key
-  tmp$Common_Name <- Common_Name
-  Common_Names[[i]] <- tmp
-  print(paste(Primer,i,length(unique(PhylopicDB$usageKey))))
-  i=i+1
+  #RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
 }
-Common_Names <- data.table::rbindlist(Common_Names,use.names=TRUE, fill=TRUE)
-Common_Names <- as.data.frame(Common_Names)
-PhylopicDB <- dplyr::left_join(PhylopicDB,Common_Names)
-print(paste(Primer,"Common names added"))
-#Save updated Phylopic database.
-write.table(PhylopicDB,"PhylopicDB.tsv",quote=FALSE,sep="\t",row.names = FALSE)
-system("aws s3 cp PhylopicDB.tsv s3://ednaexplorer/PhylopicDB.tsv --endpoint-url https://js2.jetstream-cloud.org:8001/")
-
+RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
 system("rm ne_10m_admin_1_states_provinces.*")
-system("rm Metadata.csv")
-system("rm PhylopicDB.tsv")
-system("rm Taxa_Parsed.tsv")
