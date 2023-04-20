@@ -7,7 +7,7 @@ require(jsonlite)
 require(jsonlite)
 require(data.table)
 require(DBI)
-require(RSQLite)
+require(RPostgreSQL)
 require(digest)
 
 Sys.setenv("AWS_ACCESS_KEY_ID" = "",
@@ -25,32 +25,33 @@ Sys.setenv("AWS_ACCESS_KEY_ID" = "",
 #* @get /prevalence
 
 prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold){
-  CategoricalVariables <- c("grtgroup","biome_type","IUCN_CAT","ECO_NAME","HYBAS_ID")
-  ContinuousVariables <- c("bio01","bio12","gHM","elevation","NDVI","Average_Radiance")
-  FieldVars <- c("FastqID","Sample Date","Latitude","Longitude","Spatial Uncertainty")
+  CategoricalVariables <- c("grtgroup","biome_type","iucn_Cat","eco_name","hybas_id")
+  ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
+  FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-  First_Date <- as.numeric(as.POSIXct(First_Date))
-  Last_Date <- as.numeric(as.POSIXct(Last_Date))
+  First_Date <- lubridate::ymd(First_Date)
+  Last_Date <- lubridate::ymd(Last_Date)
   Num_Mismatch <- as.numeric(Num_Mismatch)
   CountThreshold <- as.numeric(CountThreshold)
   FilterThreshold <- as.numeric(FilterThreshold)
   
   #Establish sql connection
-  Database_Driver <- dbDriver("SQLite")
   db_host <- ""
   db_port <- 
   db_name <- ""
   db_user <- ""
   db_pass <- ""
+  Database_Driver <- dbDriver("PostgreSQL")
+  sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Read in metadata and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   Metadata <- tbl(con,"TronkoMetadata")
   Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
-  Metadata <- Metadata %>% filter(`Sample Date` >= First_Date & `Sample Date` <= Last_Date) %>%
-    filter(`ProjectID` == ProjectID) %>% filter(!is.na(Latitude) & !is.na(Longitude)) %>% select(Keep_Vars)
+  Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date) %>%
+    filter(`ProjectID` == ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
   Metadata <- as.data.frame(Metadata)
-  dbDisconnect(con)
+  sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Read in Tronko output and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
@@ -60,8 +61,8 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
     group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
     select(SampleID,kingdom,TaxonomicRank)
   TronkoDB <- as.data.frame(TronkoInput)
-  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$FastqID)),]
-  dbDisconnect(con)
+  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]
+  sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Filter by relative abundance per taxon per sample.
   TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
