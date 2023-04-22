@@ -28,6 +28,6 @@ function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountT
   beta(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,EnvironmentalParameter,BetaDiversity)
   prevalence(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold)
   venn(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,Geographic_Scale)
-  timeline(Taxon_name)
-  map(Taxon_name)
+  timeline(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold)
+  map(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold)
 }
