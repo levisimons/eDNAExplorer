@@ -11,8 +11,13 @@ require(lubridate)
 require(plotly)
 require(jsonlite)
 
-Sys.setenv("AWS_ACCESS_KEY_ID" = "",
-           "AWS_SECRET_ACCESS_KEY" = "")
+Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
+           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
+db_host <- Sys.getenv("db_host")
+db_port <- Sys.getenv("db_port")
+db_name <- Sys.getenv("db_name")
+db_user <- Sys.getenv("db_user")
+db_pass <- Sys.getenv("db_pass")
 
 #* Echo the parameter that was sent in
 #* @param Marker:string Target marker name
@@ -26,11 +31,6 @@ Sys.setenv("AWS_ACCESS_KEY_ID" = "",
 
 map <- function(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold){
   #Establish sql connection
-  db_host <- ""
-  db_port <- 
-  db_name <- ""
-  db_user <- ""
-  db_pass <- ""
   Database_Driver <- dbDriver("PostgreSQL")
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
