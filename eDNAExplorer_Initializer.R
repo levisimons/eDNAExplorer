@@ -16,7 +16,13 @@ require(DBI)
 require(RPostgreSQL)
 require(digest)
 
-Sys.setenv("AWS_ACCESS_KEY_ID" = "","AWS_SECRET_ACCESS_KEY" = "")
+Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
+           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
+db_host <- Sys.getenv("db_host")
+db_port <- Sys.getenv("db_port")
+db_name <- Sys.getenv("db_name")
+db_user <- Sys.getenv("db_user")
+db_pass <- Sys.getenv("db_pass")
 
 ProjectID <- "LARiverRound1" #This is hard-coded for now.
 
@@ -71,11 +77,6 @@ Metadata$UniqueID <- sapply(paste(Metadata$ProjectID,Metadata$FastqID,Metadata$`
 colnames(Metadata) <- gsub(" ","_",tolower(colnames(Metadata)))
 
 #Establish database credentials.
-db_host <- ""
-db_port <- 
-db_name <- ""
-db_user <- ""
-db_pass <- ""
 Database_Driver <- dbDriver("PostgreSQL")
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
