@@ -15,8 +15,13 @@ require(DBI)
 require(RPostgreSQL)
 require(digest)
 
-Sys.setenv("AWS_ACCESS_KEY_ID" = "",
-           "AWS_SECRET_ACCESS_KEY" = "")
+Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
+           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
+db_host <- Sys.getenv("db_host")
+db_port <- Sys.getenv("db_port")
+db_name <- Sys.getenv("db_name")
+db_user <- Sys.getenv("db_user")
+db_pass <- Sys.getenv("db_pass")
 
 #* Echo the parameter that was sent in
 #* @param ProjectID:string Project ID
@@ -43,11 +48,6 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   FilterThreshold <- as.numeric(FilterThreshold)
   
   #Establish sql connection
-  db_host <- ""
-  db_port <- 
-  db_name <- ""
-  db_user <- ""
-  db_pass <- ""
   Database_Driver <- dbDriver("PostgreSQL")
   
   #Read in metadata and filter it.
