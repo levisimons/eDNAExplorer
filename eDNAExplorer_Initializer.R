@@ -16,13 +16,7 @@ require(DBI)
 require(RPostgreSQL)
 require(digest)
 
-Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
-           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
-db_host <- Sys.getenv("db_host")
-db_port <- Sys.getenv("db_port")
-db_name <- Sys.getenv("db_name")
-db_user <- Sys.getenv("db_user")
-db_pass <- Sys.getenv("db_pass")
+Sys.setenv("AWS_ACCESS_KEY_ID" = "e9190baae65b40a38bf43ade883b04a6","AWS_SECRET_ACCESS_KEY" = "7aa129a7d84744efa76183cc9cf4b0a5")
 
 ProjectID <- "LARiverRound1" #This is hard-coded for now.
 
@@ -77,6 +71,11 @@ Metadata$UniqueID <- sapply(paste(Metadata$ProjectID,Metadata$FastqID,Metadata$`
 colnames(Metadata) <- gsub(" ","_",tolower(colnames(Metadata)))
 
 #Establish database credentials.
+db_host <- "db.jfsudbghjnulaznuohbj.supabase.co"
+db_port <- 5432
+db_name <- "postgres"
+db_user <- "postgres"
+db_pass <- "Bazjic-xanbog-hokma2"
 Database_Driver <- dbDriver("PostgreSQL")
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
@@ -97,7 +96,6 @@ if(dbExistsTable(con,"TronkoMetadata")){
 } else{
   dbWriteTable(con,"TronkoMetadata",Metadata,row.names=FALSE,append=TRUE)
 }
-#RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
 
 #Read in GBIF occurrences.
 gbif <- gbif_local()
@@ -271,8 +269,6 @@ for(Primer in Primers){
   TronkoProject$UniqueID <- sapply(paste(TronkoProject$ProjectID,TronkoProject$Primer,TronkoProject$Taxonomic_Path,TronkoProject$SampleID,TronkoProject$Score,TronkoProject$Mismatch,TronkoProject$Readname),digest,algo="md5")
   
   #Create Tronko output database.
-  #con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
-  
   #Check for redundant data.
   #Add only new data.
   chunk <- 10000
@@ -294,7 +290,6 @@ for(Primer in Primers){
       dbWriteTable(con,"TronkoOutput",TronkoProject[min(chunks[[i]]):max(chunks[[i]]),],row.names=FALSE,append=TRUE)
     }
   }
-  #RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
   
   #Create database of Phylopic images and common names for taxa.
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
@@ -303,67 +298,79 @@ for(Primer in Primers){
   TaxaDB <- TaxaDB[!duplicated(TaxaDB),]
   TaxaDB$Taxon <- TaxaDB[cbind(1:nrow(TaxaDB), max.col(!is.na(TaxaDB), ties.method = 'last'))]
   TaxaDB$rank <- TaxonomicRanks[max.col(!is.na(TaxaDB[TaxonomicRanks]), ties.method="last")]
-  
-  GBIF_Keys <- c()
-  for(i in 1:nrow(TaxaDB)){
-    GBIF_Key <- TaxaDB[i,]
-    if(is.na(GBIF_Key$kingdom)){GBIF_Key$kingdom <- GBIF_Key$superkingdom}
-    tmp <- name_backbone(name=GBIF_Key$Taxon,rank=GBIF_Key$rank,genus=GBIF_Key$genus,
-                         family=GBIF_Key$family,order=GBIF_Key$order,
-                         class=GBIF_Key$class,phylum=GBIF_Key$phylum,kingdom=GBIF_Key$kingdom,curlopts=list(http_version=2))
-    GBIF_Key <- cbind(GBIF_Key,as.data.frame(tmp[,colnames(tmp) %in% TaxonomicKeyRanks]))
-    #Get GBIF backbone for querying Phylopic images
-    Taxon_Backbone <- as.numeric(na.omit(rev(unlist(GBIF_Key[,colnames(GBIF_Key) %in% TaxonomicKeyRanks]))))
-    #Get Phylopic images for each taxon
-    
-    if(length(Taxon_Backbone)>1){
-      res <- httr::POST(url="https://api.phylopic.org/resolve/gbif.org/species?embed_primaryImage=true",body=jsonlite::toJSON(as.character(Taxon_Backbone), auto_unbox=TRUE),content_type("application/json"),encode="json")
-    } else{
-      res <- httr::POST(url="https://api.phylopic.org/resolve/gbif.org/species?embed_primaryImage=true",body=jsonlite::toJSON(as.character(Taxon_Backbone), auto_unbox=FALSE),content_type("application/json"),encode="json")
-    }
-    test <- fromJSON(rawToChar(res$content))
-    Taxon_Image <- test[["_embedded"]][["primaryImage"]][["_links"]][["rasterFiles"]][["href"]][[1]]
-    if(is.null(Taxon_Image)){
-      Taxon_Image <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
-    }
-    print(paste(i,Taxon_Image))
-    #Get common names if available
-    if(length(na.omit(Taxon_Backbone))==0){Common_Name <- NA}
-    if(length(na.omit(Taxon_Backbone))>0){
-      Common_Name <- as.data.frame(name_usage(key=max(na.omit(Taxon_Backbone)),rank=GBIF_Key[1,"rank"], data="vernacularNames",curlopts=list(http_version=2))$data)
-      if(nrow(Common_Name)>0){
-        Common_Name <- Common_Name[Common_Name$language=="eng",]
-        Common_Name <- Common_Name[1,"vernacularName"]
-      } else {
-        Common_Name <- NA
-      }
-    }
-    GBIF_Key$Common_Name <- Common_Name
-    GBIF_Key$Image_URL <- Taxon_Image
-    GBIF_Keys[[i]] <- GBIF_Key
-  }
-  
-  GBIF_Keys <- rbindlist(GBIF_Keys, use.names=TRUE, fill=TRUE)
-  GBIF_Keys <- as.data.frame(GBIF_Keys)
   #Create unique ID for the Phylopic database.
-  GBIF_Keys$UniqueID <- sapply(paste(GBIF_Keys$Taxon,GBIF_Keys$rank),digest,algo="md5")
+  TaxaDB$UniqueID <- sapply(paste(TaxaDB$Taxon,TaxaDB$rank),digest,algo="md5")
   
-  #Check for redundant data.
-  #Add new Phylopic data.
-  #con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
+  #Check for pre-existing Phylopic database entries.  Only leave new and unique entries to append.
   if(dbExistsTable(con,"Taxonomy")==TRUE){
     Phylopic_Check <-  tbl(con,"Taxonomy")
-    Phylopic_IDs <- GBIF_Keys$UniqueID
+    Phylopic_IDs <- TaxaDB$UniqueID
     Phylopic_Check <- Phylopic_Check %>% filter(UniqueID %in% Phylopic_IDs)
     Phylopic_Check <- as.data.frame(Phylopic_Check)
     Phylopic_Check_IDs <- Phylopic_Check$UniqueID
-    Phylopic_Append <- GBIF_Keys[!(Phylopic_IDs %in% Phylopic_Check_IDs),]
-    dbWriteTable(con,"Taxonomy",Phylopic_Append,row.names=FALSE,append=TRUE)
+    TaxaDB <- TaxaDB[!(Phylopic_IDs %in% Phylopic_Check_IDs),]
   } 
   if(dbExistsTable(con,"Taxonomy")==FALSE){
-    dbWriteTable(con,"Taxonomy",GBIF_Keys,row.names=FALSE,append=TRUE)
+    TaxaDB <- TaxaDB
   }
-  #RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
+  
+  #Get Phylopic urls and common names for each unique taxon to append to database.
+  if(nrow(TaxaDB)>0){
+    GBIF_Keys <- c()
+    for(i in 1:nrow(TaxaDB)){
+      GBIF_Key <- TaxaDB[i,]
+      if(is.na(GBIF_Key$kingdom)){GBIF_Key$kingdom <- GBIF_Key$superkingdom}
+      tmp <- name_backbone(name=GBIF_Key$Taxon,rank=GBIF_Key$rank,genus=GBIF_Key$genus,
+                           family=GBIF_Key$family,order=GBIF_Key$order,
+                           class=GBIF_Key$class,phylum=GBIF_Key$phylum,kingdom=GBIF_Key$kingdom,curlopts=list(http_version=2))
+      GBIF_Key <- cbind(GBIF_Key,as.data.frame(tmp[,colnames(tmp) %in% TaxonomicKeyRanks]))
+      #Get GBIF backbone for querying Phylopic images
+      Taxon_Backbone <- as.numeric(na.omit(rev(unlist(GBIF_Key[,colnames(GBIF_Key) %in% TaxonomicKeyRanks]))))
+      #Get Phylopic images for each taxon
+      res <- httr::GET(url=paste("https://api.phylopic.org/resolve/gbif.org/species?embed_primaryImage=true&objectIDs=",paste(Taxon_Backbone,collapse=","),sep=""),config = httr::config(connecttimeout = 100))
+      Sys.sleep(0.5)
+      test <- fromJSON(rawToChar(res$content))
+      Taxon_Image <- test[["_embedded"]][["primaryImage"]][["_links"]][["rasterFiles"]][["href"]][[1]]
+      if(is.null(Taxon_Image)){
+        Taxon_Image <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
+      }
+      print(paste(i,Taxon_Image))
+      #Get common names if available
+      if(length(na.omit(Taxon_Backbone))==0){Common_Name <- NA}
+      if(length(na.omit(Taxon_Backbone))>0){
+        Common_Name <- as.data.frame(name_usage(key=max(na.omit(Taxon_Backbone)),rank=GBIF_Key[1,"rank"], data="vernacularNames",curlopts=list(http_version=2))$data)
+        if(nrow(Common_Name)>0){
+          Common_Name <- Common_Name[Common_Name$language=="eng",]
+          Common_Name <- Common_Name[1,"vernacularName"]
+        } else {
+          Common_Name <- NA
+        }
+      }
+      GBIF_Key$Common_Name <- Common_Name
+      GBIF_Key$Image_URL <- Taxon_Image
+      GBIF_Keys[[i]] <- GBIF_Key
+    }
+    
+    GBIF_Keys <- rbindlist(GBIF_Keys, use.names=TRUE, fill=TRUE)
+    GBIF_Keys <- as.data.frame(GBIF_Keys)
+    #Create unique ID for the Phylopic database.
+    GBIF_Keys$UniqueID <- sapply(paste(GBIF_Keys$Taxon,GBIF_Keys$rank),digest,algo="md5")
+    
+    #Check for redundant data.
+    #Add new Phylopic data.
+    if(dbExistsTable(con,"Taxonomy")==TRUE){
+      Phylopic_Check <-  tbl(con,"Taxonomy")
+      Phylopic_IDs <- GBIF_Keys$UniqueID
+      Phylopic_Check <- Phylopic_Check %>% filter(UniqueID %in% Phylopic_IDs)
+      Phylopic_Check <- as.data.frame(Phylopic_Check)
+      Phylopic_Check_IDs <- Phylopic_Check$UniqueID
+      Phylopic_Append <- GBIF_Keys[!(Phylopic_IDs %in% Phylopic_Check_IDs),]
+      dbWriteTable(con,"Taxonomy",Phylopic_Append,row.names=FALSE,append=TRUE)
+    } 
+    if(dbExistsTable(con,"Taxonomy")==FALSE){
+      dbWriteTable(con,"Taxonomy",GBIF_Keys,row.names=FALSE,append=TRUE)
+    } 
+  }
 }
 RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
 system("rm ne_10m_admin_1_states_provinces.*")
