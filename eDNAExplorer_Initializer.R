@@ -16,7 +16,14 @@ require(DBI)
 require(RPostgreSQL)
 require(digest)
 
-Sys.setenv("AWS_ACCESS_KEY_ID" = "e9190baae65b40a38bf43ade883b04a6","AWS_SECRET_ACCESS_KEY" = "7aa129a7d84744efa76183cc9cf4b0a5")
+Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
+           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
+db_host <- Sys.getenv("db_host")
+db_port <- Sys.getenv("db_port")
+db_name <- Sys.getenv("db_name")
+db_user <- Sys.getenv("db_user")
+db_pass <- Sys.getenv("db_pass")
+sapply(dbListConnections(Database_Driver), dbDisconnect)
 
 ProjectID <- "LARiverRound1" #This is hard-coded for now.
 
@@ -69,16 +76,6 @@ Metadata$UniqueID <- sapply(paste(Metadata$ProjectID,Metadata$FastqID,Metadata$`
 
 #Match metadata column names to format in SQL database.
 colnames(Metadata) <- gsub(" ","_",tolower(colnames(Metadata)))
-
-#Establish database credentials.
-db_host <- "db.jfsudbghjnulaznuohbj.supabase.co"
-db_port <- 5432
-db_name <- "postgres"
-db_user <- "postgres"
-db_pass <- "Bazjic-xanbog-hokma2"
-Database_Driver <- dbDriver("PostgreSQL")
-#Force close any possible postgreSQL connections.
-sapply(dbListConnections(Database_Driver), dbDisconnect)
 
 #Create Metadata database.
 con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
