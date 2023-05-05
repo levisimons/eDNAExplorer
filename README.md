@@ -11,4 +11,10 @@ The full GBIF database is automatically and locally mirrored on the first day of
 
 The sample metadata is used to run a tool to extract additional environmental variables associated with each sampling location and date.  The metadata extractor is in development [here](https://github.com/MetadataExtractor).  This tool generates an extracted metadata file.
 
-The sample and extracted metadata are merged using [this script](https://github.com/levisimons/eDNAExplorer/blob/main/eDNAExplorer_Metabarcoding_Metadata_Initializer.R).  This script is also used to determine which countries and states / provinces each sample lie within.  This information is used to enable comparisons between traditional observations of biodiversity and eDNA data.
+### Metabarcoded samples
+The sample and extracted metadata are merged and stored in a PostgreSQL database using [this script](https://github.com/levisimons/eDNAExplorer/blob/main/eDNAExplorer_Metabarcoding_Metadata_Initializer.R).  This script is also used to determine which countries and states / provinces each sample lie within.  This information is used to enable comparisons between traditional observations of biodiversity and eDNA data.
+
+### qPCR samples
+(Lorem impsum and then some)
+
+## Taxonomic data
