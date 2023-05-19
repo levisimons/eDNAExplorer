@@ -67,7 +67,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   Metadata <- tbl(con,"TronkoMetadata")
   Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
   Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date) %>%
-    filter(`ProjectID` == sample_ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
+    filter(projectid == sample_ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
   Metadata <- as.data.frame(Metadata)
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
@@ -81,7 +81,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   #Read in Tronko output and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
-  TronkoInput <- TronkoInput %>% filter(`ProjectID` == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
+  TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
     filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
     group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
     select(SampleID,sample_TaxonomicRank)
