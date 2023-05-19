@@ -51,22 +51,22 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   #Read in metadata and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   Metadata <- tbl(con,"TronkoMetadata")
-  Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
+  #Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
   Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date) %>%
-    filter(projectid == ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
+    filter(ProjectID == ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude))
   Metadata <- as.data.frame(Metadata)
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
+  dbDisconnect(con)
   
- #Read in Tronko output and filter it.
+  #Read in Tronko output and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
-  TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Primer) %>% 
+  TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Marker) %>% 
     filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
     group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
-    select(SampleID,TaxonomicRank)
+    select(SampleID,kingdom,TaxonomicRank)
   TronkoDB <- as.data.frame(TronkoInput)
-  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
+  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]
+  dbDisconnect(con)
   
   #Filter by relative abundance per taxon per sample.
   TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
