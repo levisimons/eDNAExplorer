@@ -35,9 +35,9 @@ db_pass <- Sys.getenv("db_pass")
 #* @param Geographic_Scale:string Local, State, or Nation
 #* @get /venn
 venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,Geographic_Scale){
-  #CategoricalVariables <- c("grtgroup","biome_type","IUCN_CAT","ECO_NAME","HYBAS_ID")
-  #ContinuousVariables <- c("bio01","bio12","gHM","elevation","NDVI","Average_Radiance")
-  #FieldVars <- c("FastqID","Sample Date","Latitude","Longitude","Spatial Uncertainty")
+  CategoricalVariables <- c("grtgroup","biome_type","IUCN_CAT","ECO_NAME","HYBAS_ID")
+  ContinuousVariables <- c("bio01","bio12","gHM","elevation","NDVI","Average_Radiance")
+  FieldVars <- c("FastqID","Sample Date","Latitude","Longitude","Spatial Uncertainty")
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
   #First_Date <- as.numeric(as.POSIXct(First_Date))
   #Last_Date <- as.numeric(as.POSIXct(Last_Date))
