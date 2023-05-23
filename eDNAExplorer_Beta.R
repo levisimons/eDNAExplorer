@@ -119,7 +119,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
       } else {
         Stat_test <- "Not enough variation in environmental data to analyze against beta diversity."
       }
-      p <- plot_ordination(AbundanceFiltered, ordination, color=EnvironmentalVariable,title=Stat_test) + theme(aspect.ratio=1)
+      p <- plot_ordination(AbundanceFiltered, ordination, color=EnvironmentalVariable) + theme(aspect.ratio=1) + labs(title = Stat_test, color = EnvironmentalVariable)
       p <- p+theme_bw()
     } else{
       Stat_test <- "Not enough remaining data after filters to analyze beta diversity."
