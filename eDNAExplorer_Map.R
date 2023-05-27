@@ -50,8 +50,9 @@ map <- function(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,Filt
   #Filter GBIF occurrences to a particular taxon.
   GBIFDB <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
                             coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
-                            occurrencestatus=="PRESENT",taxonkey==Taxon_GBIF) %>% select(year)
+                            occurrencestatus=="PRESENT",taxonkey==Taxon_GBIF) %>% select(decimallongitude,decimallatitude)
   GBIFDB <- as.data.frame(GBIFDB)
+  colnames(GBIFDB) <- c("longitude","latitude")
   
   #Get unique taxon locations
   if(nrow(GBIFDB) < 1){
