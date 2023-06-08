@@ -38,8 +38,9 @@ db_pass <- Sys.getenv("db_pass")
 #* @param FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 #* @param EnvironmentalParameter:string Environmental variable to analyze against alpha diversity
 #* @param BetaDiversity:string Beta diversity metric. Options are chao, bray, or jaccard.
+#* @param SpeciesList:string Name of csv file containing selected species list.
 #* @get /beta
-beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,EnvironmentalParameter,BetaDiversity){
+beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,EnvironmentalParameter,BetaDiversity,SpeciesList){
   
   #Define filters in Phyloseq as global parameters.
   sample_ProjectID <<- as.character(ProjectID)
@@ -52,11 +53,16 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   sample_FilterThreshold <<- as.numeric(FilterThreshold)
   EnvironmentalVariable <<- as.character(EnvironmentalParameter)
   BetaDiversityMetric <<- as.character(BetaDiversity)
+  SelectedSpeciesList <<- as.character(paste(SpeciesList,".csv",sep=""))
   
   CategoricalVariables <- c("grtgroup","biome_type","iucn_Cat","eco_name","hybas_id")
   ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
   FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
+  
+  #Read in species list
+  SpeciesList_df <- system(paste("aws s3 cp s3://ednaexplorer/specieslists",SelectedSpeciesList," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  SpeciesList_df <- read.table(text = paste(SpeciesList_df,sep = "\t"),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
   
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
