@@ -112,21 +112,22 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     if(BetaDiversityMetric=="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F,binary=T)}
     if(sum(!is.nan(BetaDist))>1){
       ordination = ordinate(AbundanceFiltered, method="PCoA", distance=BetaDist)
-      if(length(unique(sample_data(AbundanceFiltered)[,EnvironmentalVariable]))>1){
+      AbundanceFiltered_df <- data.frame(sample_data(AbundanceFiltered))
+      if(length(unique(AbundanceFiltered_df[,EnvironmentalVariable]))>1){
         BetaExpression = paste("adonis2(BetaDist ~ sample_data(AbundanceFiltered)$",EnvironmentalVariable,")",sep="")
         test <- eval(parse(text=BetaExpression))
-        Stat_test <- paste("PERMANOVA results, using 999 permutations.\n",DiversityMetric," beta diversity and ",EnvironmentalVariable,"\nDegrees of freedom: ",round(test$Df[1],3),". Sum of squares: ",round(test$SumOfSqs[1],3),". R-squared: ",round(test$R2[1],3),". F-statistic: ",round(test$F[1],3),". p: ",round(test$`Pr(>F)`[1],3),sep="")
+        Stat_test <- paste("PCA plot.  Results of PERMANOVA, using 999 permutations.\n",BetaDiversityMetric," beta diversity and ",EnvironmentalVariable,"\nDegrees of freedom: ",round(test$Df[1],3),". Sum of squares: ",round(test$SumOfSqs[1],3),". R-squared: ",round(test$R2[1],3),". F-statistic: ",round(test$F[1],3),". p: ",round(test$`Pr(>F)`[1],3),sep="")
       } else {
-        Stat_test <- "Not enough variation in environmental data to analyze against beta diversity."
+        Stat_test <- paste("PCA plot.  Not enough variation in ",EnvironmentalVariable," to perform a PERMANOVA on beta diversity.",sep="")
       }
       p <- plot_ordination(AbundanceFiltered, ordination, color=EnvironmentalVariable) + theme(aspect.ratio=1) + labs(title = Stat_test, color = EnvironmentalVariable)
       p <- p+theme_bw()
     } else{
-      Stat_test <- "Not enough remaining data after filters to analyze beta diversity."
+      Stat_test <- "PCA plot.  Not enough remaining data after filters to perform a PERMANOVA on beta diversity."
       p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
     }
   } else {
-    Stat_test <- "Not enough data to analyze beta diversity."
+    Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
     p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
   }
   #Save plot as json object
