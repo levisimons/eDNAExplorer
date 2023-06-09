@@ -106,6 +106,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
+  if(nrow(TronkoDB > 1)){
   #Create OTU matrix
   otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
   rownames(otumat) <- otumat[,sample_TaxonomicRank]
@@ -147,6 +148,11 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
     p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
   }
+} else {
+    Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
+    p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
+  }
+  
   #Save plot as json object
   jfig <- plotly_json(p, FALSE)
   return(jfig)
