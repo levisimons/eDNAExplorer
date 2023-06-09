@@ -87,12 +87,23 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   #Read in Tronko output and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
-  TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
-    filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
-    group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
-    select(SampleID,sample_TaxonomicRank)
-  TronkoDB <- as.data.frame(TronkoInput)
-  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]
+  if(sample_TaxonomicRank != "species"){
+    TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
+      filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
+      group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
+      select(SampleID,species,sample_TaxonomicRank)
+    TronkoDB <- as.data.frame(TronkoInput)
+    TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$Species,]
+    TronkoDB$species <- NULL
+  } else{
+    TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
+      filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
+      group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
+      select(SampleID,sample_TaxonomicRank)
+    TronkoDB <- as.data.frame(TronkoInput)
+    TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$Species,]
+  }
+  
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Create OTU matrix
