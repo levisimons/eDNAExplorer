@@ -124,7 +124,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   AbundanceFiltered <- prune_taxa(keeptaxa,CountFilter)
   
   #Plot and analyze beta diversity versus an environmental variables.
-  if(nsamples(AbundanceFiltered)>1){
+  if(nsamples(AbundanceFiltered)>1 & ntaxa(AbundanceFiltered)>1){
     if(BetaDiversityMetric!="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F)}
     if(BetaDiversityMetric=="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F,binary=T)}
     if(sum(!is.nan(BetaDist))>1){
