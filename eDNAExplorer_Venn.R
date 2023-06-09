@@ -66,13 +66,6 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   Metadata <- as.data.frame(Metadata)
   dbDisconnect(con)
   
-  #Create sample metadata matrix
-  Sample <- Metadata[!is.na(Metadata$fastqid),]
-  rownames(Sample) <- Sample$fastqid
-  Sample$fastqid <- NULL
-  Sample <- sample_data(Sample)
-  remaining_Samples <- rownames(Sample)
-  
   #Read in Tronko output and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
