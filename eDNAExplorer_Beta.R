@@ -61,8 +61,8 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
   
   #Read in species list
-  SpeciesList_df <- system(paste("aws s3 cp s3://ednaexplorer/specieslists",SelectedSpeciesList," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  SpeciesList_df <- read.table(text = paste(SpeciesList_df,sep = "\t"),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
+  SpeciesList_df <- system(paste("aws s3 cp s3://ednaexplorer/specieslists/",SelectedSpeciesList," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  SpeciesList_df <- read.table(text = paste(SpeciesList_df,sep = ","),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
   
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
