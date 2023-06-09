@@ -27,9 +27,10 @@ db_pass <- Sys.getenv("db_pass")
 #* @param TaxonomicRank:string Taxonomic level to aggregate results to
 #* @param CountThreshold:numeric Read count threshold for retaining samples
 #* @param FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
+#* @param SpeciesList:string Name of csv file containing selected species list.
 #* @get /prevalence
 
-prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold){
+prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,SpeciesList){
   CategoricalVariables <- c("grtgroup","biome_type","iucn_Cat","eco_name","hybas_id")
   ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
   FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
@@ -39,6 +40,13 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
   Num_Mismatch <- as.numeric(Num_Mismatch)
   CountThreshold <- as.numeric(CountThreshold)
   FilterThreshold <- as.numeric(FilterThreshold)
+  SelectedSpeciesList <- as.character(paste(SpeciesList,".csv",sep=""))
+  
+  #Read in species list
+  if(SelectedSpeciesList != "None.csv"){
+    SpeciesList_df <- system(paste("aws s3 cp s3://ednaexplorer/specieslists/",SelectedSpeciesList," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    SpeciesList_df <- read.table(text = paste(SpeciesList_df,sep = ","),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
+  }
   
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
@@ -56,12 +64,25 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
   #Read in Tronko output and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
-  TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Marker) %>% 
-    filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
-    group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
-    select(SampleID,kingdom,TaxonomicRank)
-  TronkoDB <- as.data.frame(TronkoInput)
-  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]
+  if(TaxonomicRank != "species"){
+    TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Marker) %>% 
+      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
+      group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
+      select(SampleID,species,TaxonomicRank)
+    TronkoDB <- as.data.frame(TronkoInput)
+    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$Species,]}
+    if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
+    TronkoDB$species <- NULL
+  } else{
+    TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Marker) %>% 
+      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
+      group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
+      select(SampleID,TaxonomicRank)
+    TronkoDB <- as.data.frame(TronkoInput)
+    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$Species,]}
+    if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
+  }
+           
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Filter by relative abundance per taxon per sample.
