@@ -69,7 +69,7 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   #Read in Tronko output and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
-  if(sample_TaxonomicRank != "species"){
+  if(TaxonomicRank != "species"){
     TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Marker) %>% 
       filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
       group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
