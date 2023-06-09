@@ -38,8 +38,9 @@ db_pass <- Sys.getenv("db_pass")
 #* @param FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 #* @param EnvironmentalParameter:string Environmental variable to analyze against alpha diversity
 #* @param AlphaDiversity:string Alpha diversity metric
+#* @param SpeciesList:string Name of csv file containing selected species list.
 #* @get /alpha
-alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,EnvironmentalParameter,AlphaDiversity){
+alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,EnvironmentalParameter,AlphaDiversity,SpeciesList){
   
   #Define filters in Phyloseq as global parameters.
   sample_ProjectID <<- as.character(ProjectID)
@@ -52,11 +53,18 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
   sample_FilterThreshold <<- as.numeric(FilterThreshold)
   EnvironmentalVariable <<- as.character(EnvironmentalParameter)
   AlphaDiversityMetric <<- as.character(AlphaDiversity)
+  SelectedSpeciesList <<- as.character(paste(SpeciesList,".csv",sep=""))
   
   CategoricalVariables <- c("grtgroup","biome_type","iucn_Cat","eco_name","hybas_id")
   ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
   FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
+  
+  #Read in species list
+  if(SelectedSpeciesList != "None.csv"){
+    SpeciesList_df <- system(paste("aws s3 cp s3://ednaexplorer/specieslists/",SelectedSpeciesList," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    SpeciesList_df <- read.table(text = paste(SpeciesList_df,sep = ","),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
+  }
   
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
@@ -81,64 +89,80 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
   #Read in Tronko output and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
-  TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
-    filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
-    group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
-    select(SampleID,sample_TaxonomicRank)
-  TronkoDB <- as.data.frame(TronkoInput)
-  TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
-  
-  #Create OTU matrix
-  otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
-  rownames(otumat) <- otumat[,sample_TaxonomicRank]
-  otumat <- otumat[,colnames(otumat) %in% unique(TronkoDB$SampleID)]
-  otumat[sapply(otumat, is.character)] <- lapply(otumat[sapply(otumat, is.character)], as.numeric)
-  OTU <- otu_table(as.matrix(otumat), taxa_are_rows = TRUE)
-  
-  #Create merged Phyloseq object.
-  physeq <- phyloseq(OTU,Sample)
-  CountFilter <- physeq
-  
-  #Filter on read abundance per sample.
-  tmpFilter  = transform_sample_counts(CountFilter, function(x) x / sum(x) )
-  tmpFiltered = filter_taxa(tmpFilter, function(x) sum(x) > sample_FilterThreshold, TRUE)
-  keeptaxa <- taxa_names(tmpFiltered)
-  AbundanceFiltered <- prune_taxa(keeptaxa,CountFilter)
-  
-  if(EnvironmentalVariable %in% CategoricalVariables){
-    #Store diversity versus variable data.
-    tmp <- ggplot_build(plot_richness(AbundanceFiltered,x=EnvironmentalVariable,measures=AlphaDiversityMetric))
-    tmp <- tmp$data[[1]]
-    tmp$x <- as.factor(tmp$x)
-    #Run a Kruskal-Wallis test between alpha diversity and selected environmental variable.
-    if(length(unique(tmp$x))>1){
-      test <- suppressWarnings(kruskal.test(tmp$y ~ tmp$x, data = tmp))
-      Stats_Message <- paste("chi-squared = ",round(test$statistic,digits=3)," df = ",test$parameter," p-value = ",round(test$p.value,digits=3))
-    } else {
-      Stats_Message <- "Not enough variation in environmental variable to run Kruskal-Wallis test."
-    }
-    #General a violin plot of alpha diversity versus an environmental variable.
-    p <- ggplot(tmp, aes(x=x, y=y))+
-      labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=gsub("_"," ",EnvironmentalVariable), y = AlphaDiversityMetric)+
-      geom_violin()+theme_bw()+geom_point(position = position_jitter(seed = 1, width = 0.2))
+  if(sample_TaxonomicRank != "species"){
+    TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
+      filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
+      group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
+      select(SampleID,species,sample_TaxonomicRank)
+    TronkoDB <- as.data.frame(TronkoInput)
+    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$Species,]}
+    if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
+    TronkoDB$species <- NULL
+  } else{
+    TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
+      filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
+      group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
+      select(SampleID,sample_TaxonomicRank)
+    TronkoDB <- as.data.frame(TronkoInput)
+    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$Species,]}
+    if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
   }
-  if(EnvironmentalVariable %in% ContinuousVariables){
-    #Store diversity versus variable data.
-    tmp <- ggplot_build(plot_richness(AbundanceFiltered,x=EnvironmentalVariable,measures=AlphaDiversityMetric))
-    tmp <- tmp$data[[1]]
-    tmp$x <- as.numeric(tmp$x)
-    #Calculate summary statistics using a Kendall correlation test between alpha diversity and environmental variable.
-    if(length(unique(tmp$x))>1){
-      test <- suppressWarnings(cor.test(tmp$x,tmp$y,alternative="two.sided",method="kendall"))
-      Stats_Message <- paste("z = ",round(test$statistic,digits=3)," tau = ",round(test$estimate,digits=3)," p-value = ",round(test$p.value,digits=3))
-    } else {
-      Stats_Message <- "Not enough variation in environmental variable to run Kruskal-Wallis test."
+  
+  if(nrow(TronkoDB) > 1){
+    #Create OTU matrix
+    otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
+    rownames(otumat) <- otumat[,sample_TaxonomicRank]
+    otumat <- otumat[,colnames(otumat) %in% unique(TronkoDB$SampleID)]
+    otumat[sapply(otumat, is.character)] <- lapply(otumat[sapply(otumat, is.character)], as.numeric)
+    OTU <- otu_table(as.matrix(otumat), taxa_are_rows = TRUE)
+
+    #Create merged Phyloseq object.
+    physeq <- phyloseq(OTU,Sample)
+    CountFilter <- physeq
+
+    #Filter on read abundance per sample.
+    tmpFilter  = transform_sample_counts(CountFilter, function(x) x / sum(x) )
+    tmpFiltered = filter_taxa(tmpFilter, function(x) sum(x) > sample_FilterThreshold, TRUE)
+    keeptaxa <- taxa_names(tmpFiltered)
+    AbundanceFiltered <- prune_taxa(keeptaxa,CountFilter)
+
+    if(EnvironmentalVariable %in% CategoricalVariables){
+      #Store diversity versus variable data.
+      tmp <- ggplot_build(plot_richness(AbundanceFiltered,x=EnvironmentalVariable,measures=AlphaDiversityMetric))
+      tmp <- tmp$data[[1]]
+      tmp$x <- as.factor(tmp$x)
+      #Run a Kruskal-Wallis test between alpha diversity and selected environmental variable.
+      if(length(unique(tmp$x))>1){
+        test <- suppressWarnings(kruskal.test(tmp$y ~ tmp$x, data = tmp))
+        Stats_Message <- paste("chi-squared = ",round(test$statistic,digits=3)," df = ",test$parameter," p-value = ",round(test$p.value,digits=3))
+      } else {
+        Stats_Message <- "Not enough variation in environmental variable to run Kruskal-Wallis test."
+      }
+      #General a violin plot of alpha diversity versus an environmental variable.
+      p <- ggplot(tmp, aes(x=x, y=y))+
+        labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=gsub("_"," ",EnvironmentalVariable), y = AlphaDiversityMetric)+
+        geom_violin()+theme_bw()+geom_point(position = position_jitter(seed = 1, width = 0.2))
     }
-    #Generate a scatterplot of alpha diversity versus an environmental variable.
-    p <- ggplot(tmp, aes(x=x, y=y))+
-      labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=gsub("_"," ",EnvironmentalVariable), y = AlphaDiversityMetric)+
-      theme_bw()+geom_point()+geom_smooth()
+    if(EnvironmentalVariable %in% ContinuousVariables){
+      #Store diversity versus variable data.
+      tmp <- ggplot_build(plot_richness(AbundanceFiltered,x=EnvironmentalVariable,measures=AlphaDiversityMetric))
+      tmp <- tmp$data[[1]]
+      tmp$x <- as.numeric(tmp$x)
+      #Calculate summary statistics using a Kendall correlation test between alpha diversity and environmental variable.
+      if(length(unique(tmp$x))>1){
+        test <- suppressWarnings(cor.test(tmp$x,tmp$y,alternative="two.sided",method="kendall"))
+        Stats_Message <- paste("z = ",round(test$statistic,digits=3)," tau = ",round(test$estimate,digits=3)," p-value = ",round(test$p.value,digits=3))
+      } else {
+        Stats_Message <- "Not enough variation in environmental variable to run Kruskal-Wallis test."
+      }
+      #Generate a scatterplot of alpha diversity versus an environmental variable.
+      p <- ggplot(tmp, aes(x=x, y=y))+
+        labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=gsub("_"," ",EnvironmentalVariable), y = AlphaDiversityMetric)+
+        theme_bw()+geom_point()+geom_smooth()
+    }
+  } else {
+      Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
+      p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
   }
   #Save plot as json object
   jfig <- plotly_json(p, FALSE)
