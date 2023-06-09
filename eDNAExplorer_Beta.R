@@ -61,8 +61,10 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
   
   #Read in species list
-  SpeciesList_df <- system(paste("aws s3 cp s3://ednaexplorer/specieslists/",SelectedSpeciesList," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  SpeciesList_df <- read.table(text = paste(SpeciesList_df,sep = ","),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
+  if(SelectedSpeciesList != "None.csv"){
+    SpeciesList_df <- system(paste("aws s3 cp s3://ednaexplorer/specieslists/",SelectedSpeciesList," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    SpeciesList_df <- read.table(text = paste(SpeciesList_df,sep = ","),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
+  }
   
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
@@ -93,7 +95,8 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
       group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
       select(SampleID,species,sample_TaxonomicRank)
     TronkoDB <- as.data.frame(TronkoInput)
-    TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$Species,]
+    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$Species,]}
+    if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
     TronkoDB$species <- NULL
   } else{
     TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
@@ -101,7 +104,8 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
       group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
       select(SampleID,sample_TaxonomicRank)
     TronkoDB <- as.data.frame(TronkoInput)
-    TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$Species,]
+    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$Species,]}
+    if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
   }
   
   sapply(dbListConnections(Database_Driver), dbDisconnect)
