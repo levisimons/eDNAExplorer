@@ -106,7 +106,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
-  if(nrow(TronkoDB > 1)){
+  if(nrow(TronkoDB)>1){
     #Create OTU matrix
     otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
     rownames(otumat) <- otumat[,sample_TaxonomicRank]
