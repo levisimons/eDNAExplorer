@@ -161,7 +161,7 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
         theme_bw()+geom_point()+geom_smooth()
     }
   } else {
-      Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
+      Stat_test <- "Not enough data to perform a Kruskal-Wallis test on alpha diversity."
       p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
   }
   #Save plot as json object
