@@ -28,11 +28,12 @@ Database_Driver <- dbDriver("PostgreSQL")
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
 
-ProjectID <- "LARiverRound1" #This is hard-coded for now.
+ProjectID <- "cliuv8uf60007l90fk3611332" #This is hard-coded for now.
 
 #Read in project metadata.
 con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
 Metadata <- tbl(con,"TronkoMetadata")
+Metadata <- Metadata %>% filter(projectid == ProjectID)
 Metadata <- as.data.frame(Metadata)
 #Get state and nation lists.
 country_list <- na.omit(unique(Metadata$nation))
@@ -75,7 +76,7 @@ Taxa_Nation <- Taxa_Nation %>% dplyr:: mutate(Ecoregion_GBIFWeight = dplyr::case
 
 #Get primers
 Markers <- setdiff(colnames(Metadata[,grepl("^marker_[[:digit:]]$",colnames(Metadata))]),colnames(Metadata[,grepl("marker_(.*?)_",colnames(Metadata))]))
-Primers <- unique(unlist(Metadata[,Markers]))
+Primers <- na.omit(unique(unlist(Metadata[,Markers])))
 #Loop over primers to add Tronko-assign data to database, along with associate Phylopic metadata.
 for(Primer in Primers){
   #Read in Tronko-assign output files.  Standardize sample IDs within them.
