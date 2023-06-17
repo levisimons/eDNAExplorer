@@ -84,7 +84,7 @@ for(Primer in Primers){
   TronkoBucket <- read.table(text = paste(TronkoBucket,sep = ""),header = FALSE)
   colnames(TronkoBucket) <- c("Date", "Time", "Size","Filename")
   TronkoFiles <- unique(TronkoBucket$Filename)
-  TronkoFiles <- TronkoFiles[grepl(paste("projects",ProjectID,Primer,sep="/"),TronkoFiles)]
+  TronkoFiles <- TronkoFiles[grepl(paste("projects",ProjectID,"assign",Primer,sep="/"),TronkoFiles)]
   TronkoFiles <- TronkoFiles[grepl("*.txt$",TronkoFiles)]
   TronkoInputs <- list()
   i=1
