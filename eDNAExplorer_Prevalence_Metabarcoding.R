@@ -107,7 +107,11 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
   
   #Filter by relative abundance per taxon per sample.
   TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
-  KingdomMatch <- TronkoDB[,c("kingdom",TaxonomicRank)]
+  if(TaxonomicRank!="kingdom"){KingdomMatch <- TronkoDB[,c("kingdom",TaxonomicRank)]}
+  if(TaxonomicRank=="kingdom"){
+             KingdomMatch <- as.data.frame(TronkoDB$kingdom)
+             colnames(KingdomMatch) <- c("kingdom")
+  }
   KingdomMatch <- KingdomMatch[!duplicated(KingdomMatch),]
   KingdomMatch <- as.data.frame(KingdomMatch)
   TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
