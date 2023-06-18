@@ -10,6 +10,8 @@ require(DBI)
 require(RPostgreSQL)
 require(digest)
 
+#Establish database credentials.
+readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
            "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
 db_host <- Sys.getenv("db_host")
@@ -107,11 +109,7 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
   
   #Filter by relative abundance per taxon per sample.
   TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
-  if(TaxonomicRank!="kingdom"){KingdomMatch <- TronkoDB[,c("kingdom",TaxonomicRank)]}
-  if(TaxonomicRank=="kingdom"){
-             KingdomMatch <- as.data.frame(TronkoDB$kingdom)
-             colnames(KingdomMatch) <- c("kingdom")
-  }
+  KingdomMatch <- TronkoDB[,c("kingdom",TaxonomicRank)]
   KingdomMatch <- KingdomMatch[!duplicated(KingdomMatch),]
   KingdomMatch <- as.data.frame(KingdomMatch)
   TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
@@ -119,7 +117,7 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
     dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
   TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
   TronkoDB <- as.data.frame(TronkoDB)
-  TronkoDB <- dplyr::left_join(TronkoDB,KingdomMatch)
+  if(TaxonomicRank!="kingdom"){TronkoDB <- dplyr::left_join(TronkoDB,KingdomMatch)}
   TronkoDB <- dplyr::left_join(TronkoDB,TaxonomyDB)
   TronkoDB <- toJSON(TronkoDB)
   return(TronkoDB)
