@@ -19,6 +19,7 @@ require(DBI)
 require(RPostgreSQL)
 require(digest)
 
+readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
            "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
 db_host <- Sys.getenv("db_host")
