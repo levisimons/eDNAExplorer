@@ -82,7 +82,27 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
     if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$Species,]}
     if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
   }
-           
+
+  sapply(dbListConnections(Database_Driver), dbDisconnect)
+
+  #Read in Taxonomy output and filter it.
+  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
+  TaxonomyInput <- tbl(con,"Taxonomy")
+  TaxaList <- na.omit(unique(TronkoDB[,TaxonomicRank]))
+  if(TaxonomicRank!="kingdom"){TaxonomyInput <- TaxonomyInput %>% filter(rank == TaxonomicRank) %>% filter(Taxon %in% TaxaList) %>% select(Taxon,Image_URL)}
+  TaxonomyDB <-  as.data.frame(TaxonomyInput)
+  colnames(TaxonomyDB) <- c(TaxonomicRank,"Image_URL")
+  if(TaxonomicRank=="kingdom"){
+           TaxonomyDB <- data.frame(kingdom=c("Fungi","Plantae","Animalia","Bacteria","Archaea","Protista","Monera","Chromista"),
+                                    Image_URL=c("https://images.phylopic.org/images/7ebbf05d-2084-4204-ad4c-2c0d6cbcdde1/raster/958x1536.png",
+                                               "https://images.phylopic.org/images/573bc422-3b14-4ac7-9df0-27d7814c099d/raster/1052x1536.png",
+                                               "https://images.phylopic.org/images/0313dc90-c1e2-467e-aacf-0f7508c92940/raster/681x1536.png",
+                                               "https://images.phylopic.org/images/d8c9f603-8930-4973-9a37-e9d0bc913a6b/raster/1536x1128.png",
+                                               "https://images.phylopic.org/images/7ccfe198-154b-4a2f-a7bf-60390cfe6135/raster/1177x1536.png",
+                                               "https://images.phylopic.org/images/4641171f-e9a6-4696-bdda-e29bc4508538/raster/336x1536.png",
+                                               "https://images.phylopic.org/images/018ee72f-fde6-4bc3-9b2e-087d060ee62d/raster/872x872.png",
+                                               "https://images.phylopic.org/images/1fd55f6f-553c-4838-94b4-259c16f90c31/raster/1054x1536.png"))
+  }
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Filter by relative abundance per taxon per sample.
@@ -96,6 +116,7 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
   TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
   TronkoDB <- as.data.frame(TronkoDB)
   TronkoDB <- dplyr::left_join(TronkoDB,KingdomMatch)
+  TronkoDB <- dplyr::left_join(TronkoDB,TaxonomyDB)
   TronkoDB <- toJSON(TronkoDB)
   return(TronkoDB)
 }
