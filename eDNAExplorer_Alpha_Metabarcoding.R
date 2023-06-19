@@ -168,4 +168,7 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
   #Save plot as json object
   jfig <- plotly_json(p, FALSE)
   return(jfig)
+  write(jfig,"Alpha_Metabarcoding.json")
+  system(paste("aws s3 cp Alpha_Metabarcoding.json s3://ednaexplorer/projects/",ProjectID,"/plots/Alpha_Metabarcoding.json --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system("rm Alpha_Metabarcoding.json")  
 }
