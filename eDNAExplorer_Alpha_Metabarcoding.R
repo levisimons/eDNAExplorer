@@ -167,7 +167,7 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
   }
   #Save plot as json object
   jfig <- plotly_json(p, FALSE)
-  filename <- paste("Alpha_Metabarcoding_Project",sample_ProjectID,"FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",sample_FilterThreshold,"Variable",EnvironmentalVariable,"DiversityMetric",AlphaDiversityMetric,"SpeciesList",SelectedSpeciesList,sep="_")
+  filename <- paste("Alpha_Metabarcoding_Project",sample_ProjectID,"FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"DiversityMetric",AlphaDiversityMetric,"SpeciesList",gsub(".csv",".json",SelectedSpeciesList),sep="_")
   write(jfig,filename)
   system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))  
