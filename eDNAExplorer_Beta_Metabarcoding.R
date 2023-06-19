@@ -80,8 +80,8 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   Metadata <- as.data.frame(Metadata)
   Metadata <- Metadata[!is.na(Metadata[,EnvironmentalVariable]),]
   sapply(dbListConnections(Database_Driver), dbDisconnect)
-  
-  #Create sample metadata matrix
+  if(nrow(Metadata)>0){
+    #Create sample metadata matrix
   Sample <- Metadata[!is.na(Metadata$fastqid),]
   rownames(Sample) <- Sample$fastqid
   Sample$fastqid <- NULL
@@ -155,6 +155,14 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
       p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
     }
 } else {
+    Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
+    p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
+  }
+  
+  #Save plot as json object
+  jfig <- plotly_json(p, FALSE)
+  return(jfig)
+  } else {
     Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
     p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
   }
