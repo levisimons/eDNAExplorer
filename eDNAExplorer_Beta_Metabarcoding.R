@@ -56,7 +56,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   BetaDiversityMetric <<- as.character(BetaDiversity)
   SelectedSpeciesList <<- as.character(paste(SpeciesList,".csv",sep=""))
   
-  CategoricalVariables <- c("grtgroup","biome_type","iucn_Cat","eco_name","hybas_id")
+  CategoricalVariables <- c("grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
   ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
   FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
