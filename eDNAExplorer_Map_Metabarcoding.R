@@ -30,7 +30,7 @@ db_pass <- Sys.getenv("db_pass")
 #* @get /map
 
 
-map <- function(Marker,Taxon,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold){
+map <- function(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold){
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
   sapply(dbListConnections(Database_Driver), dbDisconnect)
@@ -105,7 +105,7 @@ map <- function(Marker,Taxon,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThr
   Taxon_Map_Data <- rbind(TaxonMap,Metadata_Filtered)
   #Return results
   Taxon_Map_Data <- jsonlite::toJSON(Taxon_Map_Data)
-  filename <- paste("Map_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(sample_FilterThreshold,scientific=F),".json",,sep="")
+  filename <- paste("Map_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon_name,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(sample_FilterThreshold,scientific=F),".json",,sep="")
   write(Taxon_Map_Data,filename)
   system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))
