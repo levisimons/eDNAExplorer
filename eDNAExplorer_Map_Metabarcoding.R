@@ -22,7 +22,7 @@ db_pass <- Sys.getenv("db_pass")
 
 #* Echo the parameter that was sent in
 #* @param Marker:string Target marker name
-#* @param Taxon_name:string Scientific taxon name
+#* @param Taxon:string Scientific taxon name
 #* @param TaxonomicRank:string Taxonomic level to aggregate results to
 #* @param Num_Mismatch:numeric Maximum number of sequence mismatches allowed with Tronko-assign output
 #* @param CountThreshold:numeric Read count threshold for retaining samples
@@ -30,14 +30,14 @@ db_pass <- Sys.getenv("db_pass")
 #* @get /map
 
 
-map <- function(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold){
+map <- function(Marker,Taxon,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold){
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Select taxon to map.
   #User input
-  Taxon <- Taxon_name
+  Taxon <- Taxon
   #Get GBIF taxonomy key for taxon.
   Taxon_GBIF <- name_backbone(name=Taxon,rank=TaxonomicRank)$usageKey
   #Ensure numeric values.
