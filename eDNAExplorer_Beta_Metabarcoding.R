@@ -78,6 +78,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date) %>%
     filter(ProjectID == sample_ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
   Metadata <- as.data.frame(Metadata)
+  Metadata <- Metadata[!is.na(Metadata[,EnvironmentalVariable]),]
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Create sample metadata matrix
