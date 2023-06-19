@@ -22,7 +22,7 @@ db_pass <- Sys.getenv("db_pass")
 
 #* Echo the parameter that was sent in
 #* @param Marker:string Target marker name
-#* @param Taxon:string Scientific taxon name
+#* @param Taxon_name:string Scientific taxon name
 #* @param TaxonomicRank:string Taxonomic level to aggregate results to
 #* @param Num_Mismatch:numeric Maximum number of sequence mismatches allowed with Tronko-assign output
 #* @param CountThreshold:numeric Read count threshold for retaining samples
@@ -37,7 +37,7 @@ map <- function(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,Filt
   
   #Select taxon to map.
   #User input
-  Taxon <- Taxon
+  Taxon <- Taxon_name
   #Get GBIF taxonomy key for taxon.
   Taxon_GBIF <- name_backbone(name=Taxon,rank=TaxonomicRank)$usageKey
   #Ensure numeric values.
@@ -105,7 +105,7 @@ map <- function(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,Filt
   Taxon_Map_Data <- rbind(TaxonMap,Metadata_Filtered)
   #Return results
   Taxon_Map_Data <- jsonlite::toJSON(Taxon_Map_Data)
-  filename <- paste("Map_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon_name,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(sample_FilterThreshold,scientific=F),".json",,sep="")
+  filename <- paste("Map_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(sample_FilterThreshold,scientific=F),".json",,sep="")
   write(Taxon_Map_Data,filename)
   system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))
