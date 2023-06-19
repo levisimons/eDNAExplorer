@@ -91,9 +91,9 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TaxonomyInput <- tbl(con,"Taxonomy")
   TaxaList <- na.omit(unique(TronkoDB[,TaxonomicRank]))
-  if(TaxonomicRank!="kingdom"){TaxonomyInput <- TaxonomyInput %>% filter(rank == TaxonomicRank) %>% filter(Taxon %in% TaxaList) %>% select(Taxon,Image_URL)}
+  if(TaxonomicRank!="kingdom"){TaxonomyInput <- TaxonomyInput %>% filter(rank == TaxonomicRank) %>% filter(Taxon %in% TaxaList) %>% select(Taxon,Common_Name,Image_URL)}
   TaxonomyDB <-  as.data.frame(TaxonomyInput)
-  colnames(TaxonomyDB) <- c(TaxonomicRank,"Image_URL")
+  colnames(TaxonomyDB) <- c(TaxonomicRank,"Common_Name","Image_URL")
   if(TaxonomicRank=="kingdom"){
            TaxonomyDB <- data.frame(kingdom=c("Fungi","Plantae","Animalia","Bacteria","Archaea","Protista","Monera","Chromista"),
                                     Image_URL=c("https://images.phylopic.org/images/7ebbf05d-2084-4204-ad4c-2c0d6cbcdde1/raster/958x1536.png",
