@@ -29,7 +29,14 @@ Database_Driver <- dbDriver("PostgreSQL")
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
 
-ProjectID <- "cliuv8uf60007l90fk3611332" #This is hard-coded for now.
+#Get project ID.
+#Rscript --vanilla eDNAExplorer_Metabarcoding_Taxonomy_Initializer.R "project ID string"
+if (length(args)==0) {
+  stop("Need a project ID.", call.=FALSE)
+} else if (length(args)==1) {
+  # default output file
+  ProjectID <- args[1]
+}
 
 #Read in project metadata.
 con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
