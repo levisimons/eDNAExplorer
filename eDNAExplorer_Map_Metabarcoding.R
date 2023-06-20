@@ -21,6 +21,7 @@ db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 
 #* Echo the parameter that was sent in
+#* @param ProjectID:string
 #* @param Marker:string Target marker name
 #* @param Taxon_name:string Scientific taxon name
 #* @param TaxonomicRank:string Taxonomic level to aggregate results to
@@ -30,13 +31,14 @@ db_pass <- Sys.getenv("db_pass")
 #* @get /map
 
 
-map <- function(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold){
+map <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold){
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Select taxon to map.
   #User input
+  ProjectID <- as.character(ProjectID)
   Taxon <- Taxon_name
   #Get GBIF taxonomy key for taxon.
   Taxon_GBIF <- name_backbone(name=Taxon,rank=TaxonomicRank)$usageKey
