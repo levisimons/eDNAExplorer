@@ -21,6 +21,7 @@ db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 
 #* Echo the parameter that was sent in
+#* @param ProjectID:string
 #* @param Marker:string Target marker name
 #* @param Taxon_name:string Scientific taxon name
 #* @param TaxonomicRank:string Taxonomic level to aggregate results to
@@ -29,7 +30,7 @@ db_pass <- Sys.getenv("db_pass")
 #* @param FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 #* @get /timeline
 
-timeline <- function(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold){
+timeline <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold){
   
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
@@ -37,6 +38,7 @@ timeline <- function(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold
   
   #Select taxon to map.
   #User input
+  ProjectID <- as.character(ProjectID)
   Taxon <- Taxon_name
   #Get GBIF taxonomy key for taxon.
   Taxon_GBIF <- name_backbone(name=Taxon,rank=TaxonomicRank)$usageKey
@@ -105,7 +107,11 @@ timeline <- function(Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold
   #Merge eDNA and GBIF timeline data.
   Timeline <- merge(Taxa_Time,eDNA,by="year",all=T)
   Timeline <- Timeline[rowSums(is.na(Timeline)) != ncol(Timeline), ]
-  
+
+  #Export file for plotting.
   Timeline <- toJSON(Timeline)
-  return(Timeline)
+  filename <- paste("Timeline_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(FilterThreshold,scientific=F),".json",sep="")
+  write(Timeline,filename)
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("rm ",filename,sep=""))
 }
