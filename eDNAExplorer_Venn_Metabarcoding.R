@@ -148,5 +148,8 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     Taxa_Nation <- na.omit(unique(Taxa_Nation[,TaxonomicRank]))
     venn_list <- toJSON(list(GBIF=Taxa_Nation,eDNA=Tronko_Taxa))
   }
-  return(venn_list)
+  filename <- paste("Venn_Metabarcoding_Project",ProjectID,"FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",gsub(".csv",".json",SelectedSpeciesList),"GeographicScale",Geographic_Scale,sep="_")
+  write(venn_list,filename)
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("rm ",filename,sep=""))
 }
