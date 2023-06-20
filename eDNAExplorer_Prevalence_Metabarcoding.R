@@ -120,7 +120,8 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
   if(TaxonomicRank!="kingdom"){TronkoDB <- dplyr::left_join(TronkoDB,KingdomMatch)}
   TronkoDB <- dplyr::left_join(TronkoDB,TaxonomyDB)
   TronkoDB <- toJSON(TronkoDB)
-  write(TronkoDB,"Prevalence_Metabarcoding.json")
-  system(paste("aws s3 cp Prevalence_Metabarcoding.json s3://ednaexplorer/projects/",ProjectID,"/plots/Prevalence_Metabarcoding.json --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  system("rm Prevalence_Metabarcoding.json")
+  filename <- paste("Prevalence_Metabarcoding_Project",ProjectID,"FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",gsub(".csv",".json",SelectedSpeciesList),sep="_")
+  write(TronkoDB,filename)
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("rm ",filename,sep=""))
 }
