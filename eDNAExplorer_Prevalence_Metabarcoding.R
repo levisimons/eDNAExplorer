@@ -72,7 +72,7 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
       group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
       select(SampleID,TaxonomicRanks)
     TronkoDB <- as.data.frame(TronkoInput)
-    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$Species,]}
+    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & na.omit(TronkoDB$species) %in% SpeciesList_df$Species,]}
     if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
     TronkoDB$species <- NULL
   } else{
@@ -81,7 +81,7 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
       group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
       select(SampleID,TaxonomicRanks)
     TronkoDB <- as.data.frame(TronkoInput)
-    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$Species,]}
+    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & na.omit(TronkoDB$species) %in% SpeciesList_df$Species,]}
     if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
   }
 
