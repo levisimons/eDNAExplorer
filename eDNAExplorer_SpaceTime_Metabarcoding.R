@@ -35,6 +35,9 @@ db_pass <- Sys.getenv("db_pass")
 
 spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRank,CountThreshold,FilterThreshold,SpeciesList){
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
+  CategoricalVariables <- c("grtgroup","biome_type","iucn_Cat","eco_name","hybas_id")
+  ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
+  FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
   First_Date <- lubridate::ymd(First_Date)
   Last_Date <- lubridate::ymd(Last_Date)
   Num_Mismatch <- as.numeric(Num_Mismatch)
