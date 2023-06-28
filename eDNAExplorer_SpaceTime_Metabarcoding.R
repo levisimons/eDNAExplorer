@@ -159,8 +159,8 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   ProjectDB_byTime <- toJSON(ProjectDB_byTime)
   filename <- paste("PresenceByTime_Metabarcoding_Project",ProjectID,"FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",gsub(".csv",".json",SelectedSpeciesList),sep="_")
   write(ProjectDB_byTime,filename)
-  #system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  #system(paste("rm ",filename,sep=""))
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("rm ",filename,sep=""))
   
   #Aggregate merged data by site to find taxa presence by site.
   ProjectDB_bySite <- ProjectDB %>% dplyr::distinct(site,SampleID,!!sym(TaxonomicRank),.keep_all=T) %>% 
@@ -173,8 +173,8 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   ProjectDB_bySite <- toJSON(ProjectDB_bySite)
   filename <- paste("PresenceBySite_Metabarcoding_Project",ProjectID,"FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",gsub(".csv",".json",SelectedSpeciesList),sep="_")
   write(ProjectDB_bySite,filename)
-  #system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  #system(paste("rm ",filename,sep=""))
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("rm ",filename,sep=""))
   
   #Aggregate merged data by the appropriate time interval to find taxa presence by time.
   if(as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="days"))) <= 7){
@@ -217,6 +217,16 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   ProjectDB_bySiteTime <- toJSON(ProjectDB_bySiteTime)
   filename <- paste("PresenceBySiteAndTime_Metabarcoding_Project",ProjectID,"FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",gsub(".csv",".json",SelectedSpeciesList),sep="_")
   write(ProjectDB_bySiteTime,filename)
-  #system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  #system(paste("rm ",filename,sep=""))
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("rm ",filename,sep=""))
+
+  #Export filtered taxonomy table.
+  TronkoTable <- ProjectDB[,c("sample_id",TaxonomicRanks)]
+  TronkoTable$sum.taxonomy <- apply(ProjectDB[ ,TaxonomicRanks] , 1 , paste , collapse = ";" )
+  TronkoTable <- as.data.frame(table(TronkoTable[,c("sample_id","sum.taxonomy")]))
+  TronkoTable <- as.data.frame(pivot_wider(TronkoTable, names_from = sample_id, values_from = Freq))
+  filename <- paste("FilteredTaxonomy_Metabarcoding_Project",ProjectID,"FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,sep="_")
+  write(TronkoTable,filename)
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/tables/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("rm ",filename,sep=""))
 }
