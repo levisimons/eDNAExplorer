@@ -30,22 +30,23 @@ Database_Driver <- dbDriver("PostgreSQL")
 sapply(dbListConnections(Database_Driver), dbDisconnect)
 
 #Get project ID.
-#Rscript --vanilla eDNAExplorer_Metabarcoding_Metadata_Initializer.R "project ID string"
-if (length(args)==0) {
-  stop("Need a project ID.", call.=FALSE)
-} else if (length(args)==1) {
+#Rscript --vanilla eDNAExplorer_Metabarcoding_Metadata_Initializer.R "project ID string" "[inputMetadata].csv"
+if (length(args)<2) {
+  stop("Need a project ID and/or input metadata file name", call.=FALSE)
+} else if (length(args)==2) {
   # default output file
   ProjectID <- args[1]
+  InputMetadataFilename <- args[2]
 }
 
 #Read in initial metadata.
-Metadata_Initial <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/InputMetadata.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+Metadata_Initial <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/",InputMetadataFilename," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
 Metadata_Initial <- read.table(text = Metadata_Initial,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
 Metadata_Initial$`Sample Date` <- lubridate::mdy(Metadata_Initial$`Sample Date`)
 #Get field variables from initial metadata.
 Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% c("Sample ID","Longitude","Latitude","Sample Date","Spatial Uncertainty"))]
 #Read in extracted metadata.
-Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput_Metabarcoding.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
 Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
 Metadata_Extracted$Sample_Date <- lubridate::ymd_hms(Metadata_Extracted$Sample_Date)
 
