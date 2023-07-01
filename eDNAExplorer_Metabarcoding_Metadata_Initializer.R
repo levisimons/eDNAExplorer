@@ -54,7 +54,7 @@ Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% 
 #Read in extracted metadata.
 Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput_Metabarcoding.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
 Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-Metadata_Extracted$Sample_Date <- lubridate::ymd_hms(Metadata_Extracted$Sample_Date)
+Metadata_Extracted$Sample_Date <- anytime::anydate(Metadata_Extracted$Sample_Date)
 
 #Merge metadata
 Metadata <- dplyr::left_join(Metadata_Initial[,c("Sample ID","Sample Date","Latitude","Longitude","Spatial Uncertainty",Field_Variables)],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"))
