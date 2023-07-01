@@ -48,13 +48,14 @@ colnames(Metadata_Initial) <- Metadata_Initial[5,]
 Metadata_Initial <- Metadata_Initial[6:nrow(Metadata_Initial),]
 addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
 Metadata_Initial$`Sample Date` <- anytime::anydate(Metadata_Initial$`Sample Date`)
-Metadata_Initial$`Sample Date` <- lubridate::ymd(Metadata_Initial$`Sample Date`)
+Metadata_Initial <- Metadata_Initial %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
 #Get field variables from initial metadata.
 Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% c("Sample ID","Longitude","Latitude","Sample Date","Spatial Uncertainty"))]
 #Read in extracted metadata.
 Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput_Metabarcoding.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
 Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-Metadata_Extracted$Sample_Date <- anytime::anydate(Metadata_Extracted$Sample_Date)
+Metadata_Extracted$Sample_Date <- as.Date(as.POSIXct(Metadata_Extracted$Sample_Date))
+Metadata_Extracted <- Metadata_Extracted %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial_Uncertainty"),as.numeric)
 
 #Merge metadata
 Metadata <- dplyr::left_join(Metadata_Initial[,c("Sample ID","Sample Date","Latitude","Longitude","Spatial Uncertainty",Field_Variables)],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"))
