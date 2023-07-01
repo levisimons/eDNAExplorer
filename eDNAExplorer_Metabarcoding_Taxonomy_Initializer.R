@@ -83,7 +83,7 @@ Taxa_Nation <- as.data.frame(Taxa_Nation)
 Taxa_Nation <- Taxa_Nation %>% dplyr:: mutate(Ecoregion_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
 
 #Get primers
-Markers <- setdiff(colnames(Metadata[,grepl("^marker_[[:digit:]]$",colnames(Metadata))]),colnames(Metadata[,grepl("marker_(.*?)_",colnames(Metadata))]))
+Markers <- grep("^marker_[[:digit:]]$",colnames(Metadata),value=T)
 Primers <- na.omit(unique(unlist(Metadata[,Markers])))
 #Loop over primers to add Tronko-assign data to database, along with associate Phylopic metadata.
 for(Primer in Primers){
