@@ -15,6 +15,7 @@ require(dplyr)
 require(DBI)
 require(RPostgreSQL)
 require(digest)
+require(anytime)
 
 #Establish database credentials.
 readRenviron(".env")
@@ -41,8 +42,13 @@ if (length(args)<2) {
 
 #Read in initial metadata.
 Metadata_Initial <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/",InputMetadataFilename," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-Metadata_Initial <- read.table(text = Metadata_Initial,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-Metadata_Initial$`Sample Date` <- lubridate::mdy(Metadata_Initial$`Sample Date`)
+Metadata_Initial <- gsub("[\r\n]", "", Metadata_Initial)
+Metadata_Initial <- read.table(text = Metadata_Initial,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+colnames(Metadata_Initial) <- Metadata_Initial[5,]
+Metadata_Initial <- Metadata_Initial[6:nrow(Metadata_Initial),]
+addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
+Metadata_Initial$`Sample Date` <- anytime::anydate(Metadata_Initial$`Sample Date`)
+Metadata_Initial$`Sample Date` <- lubridate::ymd(Metadata_Initial$`Sample Date`)
 #Get field variables from initial metadata.
 Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% c("Sample ID","Longitude","Latitude","Sample Date","Spatial Uncertainty"))]
 #Read in extracted metadata.
@@ -88,6 +94,9 @@ Metadata$UniqueID <- sapply(paste(Metadata$ProjectID,Metadata$FastqID,Metadata$`
 
 #Match metadata column names to format in SQL database.
 colnames(Metadata) <- gsub(" ","_",tolower(colnames(Metadata)))
+
+#Remove spurious marker columns
+Metadata <- Metadata[,!(colnames(Metadata) %in% grep("^marker_[[:alpha:]]",colnames(Metadata),value=T))]
 
 #Create Metadata database.
 con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
