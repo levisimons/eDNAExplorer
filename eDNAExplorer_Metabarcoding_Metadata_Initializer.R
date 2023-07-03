@@ -31,13 +31,11 @@ Database_Driver <- dbDriver("PostgreSQL")
 sapply(dbListConnections(Database_Driver), dbDisconnect)
 
 #Get project ID.
-#Rscript --vanilla eDNAExplorer_Metabarcoding_Metadata_Initializer.R "project ID string" "[inputMetadata].csv"
-if (length(args)<2) {
-  stop("Need a project ID and/or input metadata file name", call.=FALSE)
-} else if (length(args)==2) {
-  # default output file
+#Rscript --vanilla eDNAExplorer_Metabarcoding_Metadata_Initializer.R "project ID string"
+if (length(args)<1) {
+  stop("Need a project ID", call.=FALSE)
+} else if (length(args)==1) {
   ProjectID <- args[1]
-  InputMetadataFilename <- args[2]
 }
 
 #Read in initial metadata.
