@@ -305,9 +305,3 @@ system("rm ne_10m_admin_1_states_provinces.*")
 
 
 ###
-Metadata <- read.table(file="~/Desktop/MetabarcodingJeffreyMiller.csv",header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-colnames(Metadata) <- Metadata[5,]
-Metadata <- Metadata[6:nrow(Metadata),]
-colnames(Metadata) <- gsub(" ","_",tolower(colnames(Metadata)))
-Markers <- grep("^marker_[[:digit:]]$",colnames(Metadata),value=T)
-Metadata <- Metadata[,!(colnames(Metadata) %in% grep("^marker_[[:alpha:]]",colnames(Metadata),value=T))]
