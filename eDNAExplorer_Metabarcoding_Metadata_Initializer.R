@@ -48,8 +48,8 @@ for(csv_file in unique(Project_Scan$Filename)){
   #Check if file is metabarcoding input metadata.
   if(length(grep("Marker 1",Metadata_Initial))==1){
     #Read in qPCR project data.
-    Metadata_Initial <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/qPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-    Metadata_Initial <- gsub("[\r\n]", "",     Metadata_InitialMetadata_Initial <- gsub("[\r\n]", "", Project_Data))
+    Metadata_Initial <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    Metadata_Initial <- gsub("[\r\n]", "", Metadata_Initial))
     Metadata_Initial <- read.table(text = Metadata_Initial,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
     colnames(Metadata_Initial) <- Metadata_Initial[5,]
     Metadata_Initial <- Metadata_Initial[6:nrow(Metadata_Initial),]
