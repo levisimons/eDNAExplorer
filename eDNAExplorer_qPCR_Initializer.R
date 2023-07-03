@@ -48,7 +48,7 @@ for(csv_file in unique(Project_Scan$Filename)){
   #Check if file is qPCR input metadata.
   if(length(grep("Target 1",Project_Data))==1){
     #Read in qPCR project data.
-    Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/qPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     Project_Data <- gsub("[\r\n]", "", Project_Data)
     Project_Data <- read.table(text = Project_Data,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
     colnames(Project_Data) <- Project_Data[5,]
