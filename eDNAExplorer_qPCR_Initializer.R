@@ -15,6 +15,7 @@ require(dplyr)
 require(DBI)
 require(RPostgreSQL)
 require(digest)
+require(anytime)
 
 #Establish database credentials.
 readRenviron(".env")
@@ -29,10 +30,16 @@ Database_Driver <- dbDriver("PostgreSQL")
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
 
-ProjectID <- "TidewaterGoby" #This is hard-coded for now.
+#Get project ID.
+#Rscript --vanilla eDNAExplorer_Metabarcoding_qPCR_Initializer.R "project ID string"
+if (length(args)<1) {
+  stop("Need a project ID", call.=FALSE)
+} else if (length(args)==1) {
+  ProjectID <- args[1]
+}
 
 #Find qPCR project data file and read it into a dataframe.
-Project_Scan <- system("aws s3 ls s3://ednaexplorer/projects/TidewaterGoby --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",intern=T)
+Project_Scan <- system(paste("aws s3 ls s3://ednaexplorer/projects/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=T)
 Project_Scan <- read.table(text = paste(Project_Scan,sep = ""),header = FALSE)
 colnames(Project_Scan) <- c("Date", "Time", "Size","Filename")
 Project_Scan <- Project_Scan[grep(".csv$",Project_Scan$Filename),]
@@ -46,7 +53,8 @@ for(csv_file in unique(Project_Scan$Filename)){
     Project_Data <- read.table(text = Project_Data,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
     colnames(Project_Data) <- Project_Data[5,]
     Project_Data <- Project_Data[6:nrow(Project_Data),]
-    Project_Data$`Sample Date` <- lubridate::ymd(Project_Data$`Sample Date`)
+    addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
+    Project_Data$`Sample Date` <- anytime::anydate(Project_Data$`Sample Date`)
     Project_Data$`Data type` <- NULL
     Project_Data$`Additional environmental metadata....` <- NULL
     gsub('^Target [[:digit:]] qPCR Probe Fluorophore (dye)$','^Target [[:digit:]] qPCR Probe Fluorophore$',colnames(Project_Data))
@@ -59,7 +67,7 @@ Field_Variables <- colnames(Project_Data)[!(colnames(Project_Data) %in% c("Sampl
 #Read in extracted metadata.
 Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput_qPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
 Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-Metadata_Extracted$Sample_Date <- lubridate::ymd_hms(Metadata_Extracted$Sample_Date)
+Metadata_Extracted$Sample_Date <- as.Date(as.POSIXct(Metadata_Extracted$Sample_Date))
 #Shorten some variable names for downstream database storage.
 colnames(Metadata_Extracted) <- gsub("Sea water salinity in practical salinity units at a depth of ","salinity units at depth of ",colnames(Metadata_Extracted))
 
