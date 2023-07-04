@@ -44,22 +44,21 @@ Project_Scan <- read.table(text = paste(Project_Scan,sep = ""),header = FALSE)
 colnames(Project_Scan) <- c("Date", "Time", "Size","Filename")
 Project_Scan <- Project_Scan[grep(".csv$",Project_Scan$Filename),]
 for(csv_file in unique(Project_Scan$Filename)){
-  Metadata_Initial <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   #Check if file is metabarcoding input metadata.
-  print(paste(csv_file,length(grep("Marker 1",Metadata_Initial))))
-  if(length(grep("Marker 1",Metadata_Initial))==1){
-    #Read in metabarcoding project data.
-    Metadata_Initial <- gsub("[\r\n]", "", Metadata_Initial)
-    Metadata_Initial <- read.table(text = Metadata_Initial,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-    print(dim(Metadata_Initial))
-    colnames(Metadata_Initial) <- Metadata_Initial[5,]
-    Metadata_Initial <- Metadata_Initial[6:nrow(Metadata_Initial),]
+  if(length(grep("Marker 1",Project_Data))==1){
+    #Read in metabarcoding input metadata.
+    #Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    Project_Data <- gsub("[\r\n]", "", Project_Data)
+    Project_Data <- read.table(text = Project_Data,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,stringsAsFactors=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+    colnames(Project_Data) <- Project_Data[5,]
+    Project_Data <- Project_Data[6:nrow(Project_Data),]
     addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
-    Metadata_Initial$`Sample Date` <- anytime::anydate(Metadata_Initial$`Sample Date`)
-    Metadata_Initial$`Data type` <- NULL
-    Metadata_Initial$`Additional environmental metadata....` <- NULL
-    Metadata_Initial <- Metadata_Initial %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
-    print(dim(Metadata_Initial))
+    Project_Data$`Sample Date` <- anytime::anydate(Project_Data$`Sample Date`)
+    Project_Data$`Data type` <- NULL
+    Project_Data$`Additional environmental metadata....` <- NULL
+    Project_Data <- Project_Data %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
+    Metadata_Initial <- Project_Data
   }
 }
 
