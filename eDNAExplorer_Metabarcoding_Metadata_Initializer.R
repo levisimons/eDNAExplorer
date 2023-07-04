@@ -46,11 +46,12 @@ Project_Scan <- Project_Scan[grep(".csv$",Project_Scan$Filename),]
 for(csv_file in unique(Project_Scan$Filename)){
   Metadata_Initial <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   #Check if file is metabarcoding input metadata.
+  print(paste(csv_file,length(grep("Marker 1",Metadata_Initial))))
   if(length(grep("Marker 1",Metadata_Initial))==1){
-    #Read in qPCR project data.
-    Metadata_Initial <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    #Read in metabarcoding project data.
     Metadata_Initial <- gsub("[\r\n]", "", Metadata_Initial)
     Metadata_Initial <- read.table(text = Metadata_Initial,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+    print(dim(Metadata_Initial))
     colnames(Metadata_Initial) <- Metadata_Initial[5,]
     Metadata_Initial <- Metadata_Initial[6:nrow(Metadata_Initial),]
     addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
@@ -58,6 +59,7 @@ for(csv_file in unique(Project_Scan$Filename)){
     Metadata_Initial$`Data type` <- NULL
     Metadata_Initial$`Additional environmental metadata....` <- NULL
     Metadata_Initial <- Metadata_Initial %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
+    print(dim(Metadata_Initial))
   }
 }
 
