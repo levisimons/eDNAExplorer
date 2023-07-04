@@ -44,22 +44,23 @@ Project_Scan <- read.table(text = paste(Project_Scan,sep = ""),header = FALSE)
 colnames(Project_Scan) <- c("Date", "Time", "Size","Filename")
 Project_Scan <- Project_Scan[grep(".csv$",Project_Scan$Filename),]
 for(csv_file in unique(Project_Scan$Filename)){
-  Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  Input_Data <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   #Check if file is qPCR input metadata.
-  if(length(grep("Target 1",Project_Data))==1){
+  if(length(grep("Target 1",Input_Data))==1){
     #Read in qPCR project data.
-    Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-    Project_Data <- gsub("[\r\n]", "", Project_Data)
-    Project_Data <- read.table(text = Project_Data,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-    colnames(Project_Data) <- Project_Data[5,]
-    Project_Data <- Project_Data[6:nrow(Project_Data),]
+    Input_Data <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    Input_Data <- gsub("[\r\n]", "", Input_Data)
+    Input_Data <- read.table(text = Input_Data,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+    colnames(Input_Data) <- Input_Data[5,]
+    Input_Data <- Input_Data[6:nrow(Input_Data),]
     addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
-    Project_Data$`Sample Date` <- anytime::anydate(Project_Data$`Sample Date`)
-    Project_Data$`Data type` <- NULL
-    Project_Data$`Additional environmental metadata....` <- NULL
-    gsub('^Target [[:digit:]] qPCR Probe Fluorophore (dye)$','^Target [[:digit:]] qPCR Probe Fluorophore$',colnames(Project_Data))
-    gsub('^Target [[:digit:]] Cycle Threshold (ct)$','^Target [[:digit:]] Cycle Threshold (ct)$',colnames(Project_Data))
-    Project_Data <- Project_Data %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
+    Input_Data$`Sample Date` <- anytime::anydate(Input_Data$`Sample Date`)
+    Input_Data$`Data type` <- NULL
+    Input_Data$`Additional environmental metadata....` <- NULL
+    gsub('^Target [[:digit:]] qPCR Probe Fluorophore (dye)$','^Target [[:digit:]] qPCR Probe Fluorophore$',colnames(Input_Data))
+    gsub('^Target [[:digit:]] Cycle Threshold (ct)$','^Target [[:digit:]] Cycle Threshold (ct)$',colnames(Input_Data))
+    Input_Data <- Input_Data %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
+    Project_Data <- Input_Data
   }
 }
 
