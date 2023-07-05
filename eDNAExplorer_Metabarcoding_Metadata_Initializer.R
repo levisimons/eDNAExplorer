@@ -113,6 +113,10 @@ colnames(Metadata) <- gsub(" ","_",tolower(colnames(Metadata)))
 
 #Remove spurious marker columns
 Metadata <- Metadata[,!(colnames(Metadata) %in% grep("^marker_[[:alpha:]]",colnames(Metadata),value=T))]
+#Remove non-standard columns
+Required_Variables <- unique(c("site","sample_id","sample_type","longitude","latitude","sample_date","spatial_uncertainty","sample_replicate_number",grep("^marker_[[:digit:]]",colnames(Metadata),value=T),gsub(" ","_",tolower(colnames(Metadata_Extracted)))))
+Required_Variables <- Required_Variables[Required_Variables != "name"]
+Metadata <- Metadata[,colnames(Metadata) %in% Required_Variables]
 
 #Create Metadata database.
 con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
