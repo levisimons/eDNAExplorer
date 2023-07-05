@@ -68,6 +68,8 @@ Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% 
 Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput_Metabarcoding.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
 Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
 Metadata_Extracted$Sample_Date <- as.Date(as.POSIXct(Metadata_Extracted$Sample_Date))
+#Shorten some variable names for downstream database storage.
+colnames(Metadata_Extracted) <- gsub("Sea water salinity in practical salinity units at a depth of ","salinity units at depth of ",colnames(Metadata_Extracted))
 Metadata_Extracted <- Metadata_Extracted %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial_Uncertainty"),as.numeric)
 
 #Merge metadata
