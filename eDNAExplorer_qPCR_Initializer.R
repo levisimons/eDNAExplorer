@@ -75,7 +75,7 @@ Metadata_Extracted <- Metadata_Extracted[!duplicated(Metadata_Extracted),]
 #Merge metadata and project data
 tmp1 <- Project_Data[complete.cases(Project_Data[,c("Sample ID","Sample Date","Latitude","Longitude","Spatial Uncertainty")]),]
 tmp2 <- Metadata_Extracted[complete.cases(Metadata_Extracted[,c("name","Sample_Date","Latitude","Longitude","Spatial_Uncertainty")]),]
-MergedData <- dplyr::left_join(tmp1,tmp2,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"),na_matches = "never")
+MergedData <- dplyr::left_join(tmp1,tmp2,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"),,multiple="all",na_matches = "never")
 
 #Add project ID
 MergedData$ProjectID <- ProjectID
@@ -261,7 +261,6 @@ tmp <- dplyr::left_join(GBIF_Keys[c("Taxon","family","genus","species")],tmp,by=
 for(TargetVar in unique(grep("^Target [[:digit:]] Organism$",colnames(MergedData),value=T))){
   MergedData <- MergedData %>% dplyr::left_join(tmp[,c("Taxon","TOS_Local","TOS_State","TOS_Nation")],by=setNames("Taxon",TargetVar))
 }
-MergedData <- dplyr::left_join(MergedData,tmp[,!(colnames(tmp) %in% c("family","genus","species"))],by=c("Target Organism"="Taxon"))
 
 #Check for redundant data.
 #Add new Phylopic data.
