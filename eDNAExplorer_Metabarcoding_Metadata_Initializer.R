@@ -51,8 +51,8 @@ for(csv_file in unique(Project_Scan$Filename)){
     #Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     Project_Data <- gsub("[\r\n]", "", Project_Data)
     Project_Data <- read.table(text = Project_Data,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,stringsAsFactors=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-    colnames(Project_Data) <- Project_Data[5,]
-    Project_Data <- Project_Data[6:nrow(Project_Data),]
+    colnames(Project_Data) <- Project_Data[1,]
+    Project_Data <- Project_Data[2:nrow(Project_Data),]
     addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
     Project_Data$`Sample Date` <- anytime::anydate(Project_Data$`Sample Date`)
     Project_Data$`Data type` <- NULL
@@ -62,18 +62,18 @@ for(csv_file in unique(Project_Scan$Filename)){
   }
 }
 
-#Get field variables from initial metadata.
-Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% c("Sample ID","Longitude","Latitude","Sample Date","Spatial Uncertainty"))]
+Required_Variables <- c("Site","Sample ID","Sample Type","Longitude","Latitude","Sample Date","Sequencing Platform","Spatial Uncertainty","Sequence Length","Fastq Forward Reads Filename","Fastq Reverse Reads Filename",grep("^Marker [[:digit:]]$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] ForwardPS$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] ReversePS$",colnames(Metadata_Initial),value=T))
+#Get field variables from initial metadata.  These are generally project-specific non-required variables.
+Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% Required_Variables)]
 #Read in extracted metadata.
 Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput_Metabarcoding.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
 Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-Metadata_Extracted$Sample_Date <- as.Date(as.POSIXct(Metadata_Extracted$Sample_Date))
-#Shorten some variable names for downstream database storage.
-colnames(Metadata_Extracted) <- gsub("Sea water salinity in practical salinity units at a depth of ","salinity units at depth of ",colnames(Metadata_Extracted))
-Metadata_Extracted <- Metadata_Extracted %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial_Uncertainty"),as.numeric)
+Metadata_Extracted$Sample_Date <- lubridate::ymd_hms(Metadata_Extracted$Sample_Date)
+#Set no data results.
+Metadata_Extracted[Metadata_Extracted==-999999] <- NA
 
 #Merge metadata
-Metadata <- dplyr::left_join(Metadata_Initial[,c("Sample ID","Sample Date","Latitude","Longitude","Spatial Uncertainty",Field_Variables)],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"))
+Metadata <- dplyr::left_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"))
 
 #Add project ID
 Metadata$ProjectID <- ProjectID
@@ -110,13 +110,6 @@ Metadata$UniqueID <- sapply(paste(Metadata$ProjectID,Metadata$FastqID,Metadata$`
 
 #Match metadata column names to format in SQL database.
 colnames(Metadata) <- gsub(" ","_",tolower(colnames(Metadata)))
-
-#Remove spurious marker columns
-Metadata <- Metadata[,!(colnames(Metadata) %in% grep("^marker_[[:alpha:]]",colnames(Metadata),value=T))]
-#Remove non-standard columns
-Required_Variables <- unique(c("site","sample_id","sample_type","longitude","latitude","sample_date","spatial_uncertainty","sample_replicate_number",grep("^marker_[[:digit:]]",colnames(Metadata),value=T),gsub(" ","_",tolower(colnames(Metadata_Extracted)))))
-Required_Variables <- Required_Variables[Required_Variables != "name"]
-Metadata <- Metadata[,colnames(Metadata) %in% Required_Variables]
 
 #Create Metadata database.
 con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
