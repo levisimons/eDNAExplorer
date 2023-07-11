@@ -77,8 +77,8 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
       group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
       select(SampleID,species,TaxonomicRank)
     TronkoDB <- as.data.frame(TronkoInput)
-    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name,]}
-    if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
+    if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name,]}
+    if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
     TronkoDB$species <- NULL
   } else{
     TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Marker) %>% 
@@ -86,8 +86,8 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
       group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
       select(SampleID,TaxonomicRank)
     TronkoDB <- as.data.frame(TronkoInput)
-    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name,]}
-    if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
+    if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name,]}
+    if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
   }
            
   sapply(dbListConnections(Database_Driver), dbDisconnect)
