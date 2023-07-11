@@ -66,7 +66,6 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Read in Tronko output and filter it.
-  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
   TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Marker) %>% 
     filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
@@ -78,7 +77,6 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Read in Taxonomy output and filter it.
-  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TaxonomyInput <- tbl(con,"Taxonomy")
   TaxaList <- na.omit(unique(TronkoDB[,TaxonomicRank]))
   TaxonomyInput <- TaxonomyInput %>% filter(rank == TaxonomicRank) %>% filter(Taxon %in% TaxaList) %>% select(Taxon,Common_Name,Image_URL)
