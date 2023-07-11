@@ -38,30 +38,18 @@ if (length(args)<1) {
   ProjectID <- args[1]
 }
 
-#Find qPCR project data file and read it into a dataframe.
-Project_Scan <- system(paste("aws s3 ls s3://ednaexplorer/projects/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=T)
-Project_Scan <- read.table(text = paste(Project_Scan,sep = ""),header = FALSE)
-colnames(Project_Scan) <- c("Date", "Time", "Size","Filename")
-Project_Scan <- Project_Scan[grep(".csv$",Project_Scan$Filename),]
-for(csv_file in unique(Project_Scan$Filename)){
-  Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  #Check if file is qPCR input metadata.
-  if(length(grep("Target 1",Project_Data))==1){
-    #Read in qPCR project data.
-    Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-    Project_Data <- gsub("[\r\n]", "", Project_Data)
-    Project_Data <- read.table(text = Project_Data,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-    colnames(Project_Data) <- Project_Data[1,]
-    Project_Data <- Project_Data[2:nrow(Project_Data),]
-    addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
-    Project_Data$`Sample Date` <- anytime::anydate(Project_Data$`Sample Date`)
-    Project_Data$`Data type` <- NULL
-    Project_Data$`Additional environmental metadata....` <- NULL
-    gsub('^Target [[:digit:]] qPCR Probe Fluorophore (dye)$','^Target [[:digit:]] qPCR Probe Fluorophore$',colnames(Project_Data))
-    gsub('^Target [[:digit:]] Cycle Threshold (ct)$','^Target [[:digit:]] Cycle Threshold (ct)$',colnames(Project_Data))
-    Project_Data <- Project_Data %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
-  }
-}
+#Read in qPCR project data.
+Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/projects",ProjectID,"QPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
+Project_Data <- gsub("[\r\n]", "", Project_Data)
+Project_Data <- read.table(text = Project_Data,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
+Project_Data$`Sample Date` <- anytime::anydate(Project_Data$`Sample Date`)
+Project_Data$`Data type` <- NULL
+Project_Data$`Additional environmental metadata....` <- NULL
+colnames(Project_Data) <- gsub('qPCR Probe Fluorophore \\(dye\\)','qPCR Probe Fluorophore',colnames(Project_Data))
+colnames(Project_Data) <- gsub('Cycle Threshold \\(ct\\)','Cycle Threshold',colnames(Project_Data))
+Project_Data <- Project_Data %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
+Project_Data <- as.data.frame(Project_Data)
 
 Field_Variables <- colnames(Project_Data)[!(colnames(Project_Data) %in% c("Sample ID","Longitude","Latitude","Sample Date","Spatial Uncertainty"))]
 #Read in extracted metadata.
@@ -115,9 +103,6 @@ state_province_list <- na.omit(unique(GADM_Boundaries$State))
 MergedData <- MergedData[!duplicated(MergedData),]
 Target_Variables <- colnames(MergedData)[grep("^Target [[:digit:]]",colnames(MergedData))]
 MergedData$UniqueID <- sapply(apply(MergedData[,c("Sample ID","Sample Date","Latitude","Longitude","Spatial Uncertainty",Target_Variables)],1,paste,collapse = "" ),digest,algo="md5")
-
-#Open qPCR sample database.
-con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
 
 #Read in GBIF occurrences.
 gbif <- gbif_local()
@@ -264,6 +249,8 @@ for(TargetVar in unique(grep("^Target [[:digit:]] Organism$",colnames(MergedData
 
 #Check for redundant data.
 #Add new Phylopic data.
+#Open qPCR sample database.
+con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
 if(dbExistsTable(con,"Taxonomy")==TRUE){
   Phylopic_Check <-  tbl(con,"Taxonomy")
   Phylopic_IDs <- GBIF_Keys$UniqueID
@@ -276,6 +263,7 @@ if(dbExistsTable(con,"Taxonomy")==TRUE){
 if(dbExistsTable(con,"Taxonomy")==FALSE){
   dbWriteTable(con,"Taxonomy",GBIF_Keys,row.names=FALSE,append=TRUE)
 }
+RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
 
 #Match qPCR project column names to format in SQL database.
 colnames(MergedData) <- gsub(" ","_",tolower(colnames(MergedData)))
@@ -287,6 +275,8 @@ MergedData <- MergedData[,colnames(MergedData) %in% Required_Variables]
 
 #Check for redundant data.
 #Add new project data.
+#Open qPCR sample database.
+con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
 if(dbExistsTable(con,"QPCRSample")){
   MergedData_Check <-  tbl(con,"QPCRSample")
   MergedData_IDs <- MergedData$uniqueid
