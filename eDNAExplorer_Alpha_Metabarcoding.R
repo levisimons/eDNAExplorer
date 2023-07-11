@@ -97,8 +97,8 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
       group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
       select(SampleID,species,sample_TaxonomicRank)
     TronkoDB <- as.data.frame(TronkoInput)
-    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
-    if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
+    if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
+    if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
     TronkoDB$species <- NULL
   } else{
     TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
@@ -106,8 +106,8 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
       group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
       select(SampleID,sample_TaxonomicRank)
     TronkoDB <- as.data.frame(TronkoInput)
-    if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
-    if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
+    if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
+    if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
   }
   
   if(nrow(TronkoDB) > 1){
