@@ -63,7 +63,6 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date) %>%
     filter(ProjectID == ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(site,sample_id,sample_date,fastqid)
   Metadata <- as.data.frame(Metadata)
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Read in Tronko output and filter it.
   TronkoInput <- tbl(con,"TronkoOutput")
@@ -74,7 +73,6 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   TronkoDB <- as.data.frame(TronkoInput)
   if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name,]}
   if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Read in Taxonomy output and filter it.
   TaxonomyInput <- tbl(con,"Taxonomy")
