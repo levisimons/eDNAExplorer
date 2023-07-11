@@ -54,25 +54,26 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   sample_FilterThreshold <<- as.numeric(FilterThreshold)
   EnvironmentalVariable <<- as.character(EnvironmentalParameter)
   BetaDiversityMetric <<- as.character(BetaDiversity)
-  SelectedSpeciesList <<- as.character(paste(SpeciesList,".csv",sep=""))
+  SelectedSpeciesList <<- as.character(SpeciesList)
   
   CategoricalVariables <- c("grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
   ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
   FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
   
-  #Read in species list
-  if(SelectedSpeciesList != "None.csv"){
-    SpeciesList_df <- system(paste("aws s3 cp s3://ednaexplorer/specieslists/",SelectedSpeciesList," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-    SpeciesList_df <- read.table(text = paste(SpeciesList_df,sep = ","),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
-  }
-  
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
   sapply(dbListConnections(Database_Driver), dbDisconnect)
+  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
+  
+  #Read in species list
+  if(SelectedSpeciesList != "None"){
+    SpeciesList_df <- tbl(con,"SpeciesListItem")
+    SpeciesList_df <- SpeciesList_df %>% filter(species_list == SelectedSpeciesList)
+    SpeciesList_df <- as.data.frame(SpeciesList_df)
+  }
   
   #Read in metadata and filter it.
-  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   Metadata <- tbl(con,"TronkoMetadata")
   Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
   Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date) %>%
@@ -97,7 +98,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
         group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
         select(SampleID,species,sample_TaxonomicRank)
       TronkoDB <- as.data.frame(TronkoInput)
-      if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$Species,]}
+      if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
       if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
       TronkoDB$species <- NULL
     } else{
@@ -106,7 +107,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
         group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
         select(SampleID,sample_TaxonomicRank)
       TronkoDB <- as.data.frame(TronkoInput)
-      if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$Species,]}
+      if(SelectedSpeciesList != "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
       if(SelectedSpeciesList == "None.csv"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
     }
     
