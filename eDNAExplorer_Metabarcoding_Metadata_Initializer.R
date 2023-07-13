@@ -50,7 +50,7 @@ for(csv_file in unique(Project_Scan$Filename)){
     #Read in metabarcoding input metadata.
     #Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/",csv_file," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     Project_Data <- gsub("[\r\n]", "", Project_Data)
-    Project_Data <- read.table(text = Project_Data,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,stringsAsFactors=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+    Project_Data <- read.table(text = Project_Data,header=FALSE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,stringsAsFactors=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A","#N/A"))
     colnames(Project_Data) <- Project_Data[1,]
     Project_Data <- Project_Data[2:nrow(Project_Data),]
     addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
