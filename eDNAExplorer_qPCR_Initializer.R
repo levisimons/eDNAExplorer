@@ -54,7 +54,7 @@ Project_Data <- as.data.frame(Project_Data)
 Field_Variables <- colnames(Project_Data)[!(colnames(Project_Data) %in% c("Sample ID","Longitude","Latitude","Sample Date","Spatial Uncertainty"))]
 #Read in extracted metadata.
 Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput_qPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A","#N/A"))
 Metadata_Extracted$Sample_Date <- as.Date(as.POSIXct(Metadata_Extracted$Sample_Date))
 
 #Remove duplicate rows in extracted metadata
