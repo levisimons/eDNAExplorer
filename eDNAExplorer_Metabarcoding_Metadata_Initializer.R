@@ -47,7 +47,6 @@ Project_Data$`Sample Date` <- anytime::anydate(Project_Data$`Sample Date`)
 Project_Data$`Data type` <- NULL
 Project_Data$`Additional environmental metadata....` <- NULL
 #Remove zero length variable names
-nchar(colnames(Project_Data))>0
 Project_Data <- Project_Data[,nchar(colnames(Project_Data))>0]
 Project_Data <- Project_Data %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
 Project_Data <- as.data.frame(Project_Data)
