@@ -81,14 +81,14 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   colnames(TaxonomyDB) <- c(TaxonomicRank,"Common_Name","Image_URL")
   if(TaxonomicRank=="kingdom"){
     TaxonomyDB <- data.frame(kingdom=c("Fungi","Plantae","Animalia","Bacteria","Archaea","Protista","Monera","Chromista"),
-                             Image_URL=c("https://images.phylopic.org/images/7ebbf05d-2084-4204-ad4c-2c0d6cbcdde1/raster/958x1536.png",
-                                         "https://images.phylopic.org/images/573bc422-3b14-4ac7-9df0-27d7814c099d/raster/1052x1536.png",
-                                         "https://images.phylopic.org/images/0313dc90-c1e2-467e-aacf-0f7508c92940/raster/681x1536.png",
-                                         "https://images.phylopic.org/images/d8c9f603-8930-4973-9a37-e9d0bc913a6b/raster/1536x1128.png",
-                                         "https://images.phylopic.org/images/7ccfe198-154b-4a2f-a7bf-60390cfe6135/raster/1177x1536.png",
-                                         "https://images.phylopic.org/images/4641171f-e9a6-4696-bdda-e29bc4508538/raster/336x1536.png",
-                                         "https://images.phylopic.org/images/018ee72f-fde6-4bc3-9b2e-087d060ee62d/raster/872x872.png",
-                                         "https://images.phylopic.org/images/1fd55f6f-553c-4838-94b4-259c16f90c31/raster/1054x1536.png"))
+                             Image_URL=c("https://images.phylopic.org/images/e5d32221-7ea9-46ed-8e0a-d9dbddab0b4a/raster/1536x1082.png",
+                                        "https://images.phylopic.org/images/573bc422-3b14-4ac7-9df0-27d7814c099d/raster/1052x1536.png",
+                                        "https://images.phylopic.org/images/9c234021-ce53-45d9-8fdd-b0ca3115a451/raster/1913x1113.png",
+                                        "https://images.phylopic.org/images/891bdfc2-292b-422d-b7e5-a93823b9ce85/raster/1484x1536.png",
+                                        "https://images.phylopic.org/images/a333c62f-a421-4ae0-894c-cf4dd8e1b70c/raster/1336x1536.png",
+                                        "https://images.phylopic.org/images/595359bd-6638-4900-8536-82b2ed511a25/raster/535x1536.png",
+                                        "https://images.phylopic.org/images/1edff864-c53b-492b-a0cf-f6fe816815a8/raster/1536x1282.png",
+                                        "https://images.phylopic.org/images/4924b6bd-cfb8-4d60-a32a-442d02afbe85/raster/1460x1536.png"))
   }
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
