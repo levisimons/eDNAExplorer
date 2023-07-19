@@ -48,7 +48,7 @@ Project_Data <- read.table(text = Project_Data,header=TRUE, sep=",",as.is=T,skip
 names(Project_Data) <- gsub(x = names(Project_Data), pattern = "ForwardPS", replacement = "Forward PS")
 names(Project_Data) <- gsub(x = names(Project_Data), pattern = "ReversePS", replacement = "Reverse PS")
 addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
-Project_Data$`Sample Date` <- anytime::anydate(Project_Data$`Sample Date`)
+Project_Data$`Sample Date` <- as.Date(as.character(parse_date_time(Project_Data$`Sample Date`, orders = c("ymd", "dmy", "mdy"))))
 Project_Data$`Data type` <- NULL
 Project_Data$`Additional environmental metadata....` <- NULL
 #Remove zero length variable names
@@ -57,7 +57,7 @@ Project_Data <- Project_Data %>% dplyr::mutate_at(c("Latitude","Longitude","Spat
 Project_Data <- as.data.frame(Project_Data)
 Metadata_Initial <- Project_Data
 
-Required_Variables <- c("Site","Sample ID","Sample Type","Longitude","Latitude","Sample Date","Sequencing Platform","Spatial Uncertainty","Sequence Length","Fastq Forward Reads Filename","Fastq Reverse Reads Filename",grep("^Marker [[:digit:]]$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] ForwardPS$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] ReversePS$",colnames(Metadata_Initial),value=T))
+Required_Variables <- c("Site","Sample ID","Sample Type","Longitude","Latitude","Sample Date","Sequencing Platform","Spatial Uncertainty","Sequence Length","Fastq Forward Reads Filename","Fastq Reverse Reads Filename",grep("^Marker [[:digit:]]$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Forward PS$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Reverse PS$",colnames(Metadata_Initial),value=T))
 #Get field variables from initial metadata.  These are generally project-specific non-required variables.
 Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% Required_Variables)]
 #Read in extracted metadata.
@@ -66,6 +66,7 @@ Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",
 Metadata_Extracted$Sample_Date <- lubridate::ymd_hms(Metadata_Extracted$Sample_Date)
 #Set no data results.
 Metadata_Extracted[Metadata_Extracted==-999999] <- NA
+Metadata_Extracted[Metadata_Extracted==-32768] <- NA
 
 #Merge metadata
 Metadata <- dplyr::left_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"))
