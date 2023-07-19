@@ -41,7 +41,7 @@ if (length(args)==0) {
 
 #Read in project metadata.
 con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
-Metadata <- tbl(con,"TronkoMetadata_test")
+Metadata <- tbl(con,"TronkoMetadata")
 Metadata <- Metadata %>% filter(projectid == ProjectID)
 Metadata <- as.data.frame(Metadata)
 #Get state and nation lists.
@@ -87,7 +87,7 @@ Taxa_Nation <- Taxa_Nation %>% dplyr:: mutate(Ecoregion_GBIFWeight = dplyr::case
 Markers <- grep("^marker_[[:digit:]]$",colnames(Metadata),value=T)
 Primers <- na.omit(unique(unlist(Metadata[,Markers])))
 #Loop over primers to add Tronko-assign data to database, along with associate Phylopic metadata.
-for(Primer in Primers[6]){
+for(Primer in Primers){
   #Read in Tronko-assign output files.  Standardize sample IDs within them.
   TronkoBucket <- system(paste("aws s3 ls s3://ednaexplorer/projects/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   TronkoBucket <- read.table(text = paste(TronkoBucket,sep = ""),header = FALSE)
@@ -225,8 +225,8 @@ for(Primer in Primers[6]){
     #Add only new data.
     chunk <- 10000
     chunks <- split(1:nrow(TronkoProject), ceiling(seq_along(1:nrow(TronkoProject))/chunk))
-    TronkoInput <-  tbl(con,"TronkoOutput_test")
-    if(dbExistsTable(con,"TronkoOutput_test")==TRUE){
+    TronkoInput <-  tbl(con,"TronkoOutput")
+    if(dbExistsTable(con,"TronkoOutput")==TRUE){
       for(i in 1:ceiling(nrow(TronkoProject)/chunk)){
         TronkoProject_Subset <- TronkoProject[min(chunks[[i]]):max(chunks[[i]]),]
         Tronko_IDs <- TronkoProject_Subset$UniqueID
@@ -234,12 +234,12 @@ for(Primer in Primers[6]){
         Tronko_Check <- as.data.frame(Tronko_Check)
         Tronko_Check_IDs <- Tronko_Check$UniqueID
         TronkoProject_Subset <- TronkoProject_Subset[!(Tronko_IDs %in% Tronko_Check_IDs),]
-        dbWriteTable(con,"TronkoOutput_test",TronkoProject_Subset,row.names=FALSE,append=TRUE)
+        dbWriteTable(con,"TronkoOutput",TronkoProject_Subset,row.names=FALSE,append=TRUE)
       }
     } 
-    if(dbExistsTable(con,"TronkoOutput_test")==FALSE){
+    if(dbExistsTable(con,"TronkoOutput")==FALSE){
       for(i in 1:ceiling(nrow(TronkoProject)/chunk)){
-        dbWriteTable(con,"TronkoOutput_test",TronkoProject[min(chunks[[i]]):max(chunks[[i]]),],row.names=FALSE,append=TRUE)
+        dbWriteTable(con,"TronkoOutput",TronkoProject[min(chunks[[i]]):max(chunks[[i]]),],row.names=FALSE,append=TRUE)
       }
     }
     
@@ -254,15 +254,15 @@ for(Primer in Primers[6]){
     TaxaDB$UniqueID <- sapply(paste(TaxaDB$Taxon,TaxaDB$rank),digest,algo="md5")
     
     #Check for pre-existing Phylopic database entries.  Only leave new and unique entries to append.
-    if(dbExistsTable(con,"Taxonomy_test")==TRUE){
-      Phylopic_Check <-  tbl(con,"Taxonomy_test")
+    if(dbExistsTable(con,"Taxonomy")==TRUE){
+      Phylopic_Check <-  tbl(con,"Taxonomy")
       Phylopic_IDs <- TaxaDB$UniqueID
       Phylopic_Check <- Phylopic_Check %>% filter(UniqueID %in% Phylopic_IDs)
       Phylopic_Check <- as.data.frame(Phylopic_Check)
       Phylopic_Check_IDs <- Phylopic_Check$UniqueID
       TaxaDB <- TaxaDB[!(Phylopic_IDs %in% Phylopic_Check_IDs),]
     } 
-    if(dbExistsTable(con,"Taxonomy_test")==FALSE){
+    if(dbExistsTable(con,"Taxonomy")==FALSE){
       TaxaDB <- TaxaDB
     }
     
@@ -310,7 +310,7 @@ for(Primer in Primers[6]){
       
       #Check for redundant data.
       #Add new Phylopic data.
-      if(dbExistsTable(con,"Taxonomy_test")==TRUE){
+      if(dbExistsTable(con,"Taxonomy")==TRUE){
         Phylopic_Check <-  tbl(con,"Taxonomy")
         Phylopic_IDs <- GBIF_Keys$UniqueID
         Phylopic_Check <- Phylopic_Check %>% filter(UniqueID %in% Phylopic_IDs)
@@ -319,8 +319,8 @@ for(Primer in Primers[6]){
         Phylopic_Append <- GBIF_Keys[!(Phylopic_IDs %in% Phylopic_Check_IDs),]
         dbWriteTable(con,"Taxonomy_test",Phylopic_Append,row.names=FALSE,append=TRUE)
       } 
-      if(dbExistsTable(con,"Taxonomy_test")==FALSE){
-        dbWriteTable(con,"Taxonomy_test",GBIF_Keys,row.names=FALSE,append=TRUE)
+      if(dbExistsTable(con,"Taxonomy")==FALSE){
+        dbWriteTable(con,"Taxonomy",GBIF_Keys,row.names=FALSE,append=TRUE)
       } 
     } 
   }
