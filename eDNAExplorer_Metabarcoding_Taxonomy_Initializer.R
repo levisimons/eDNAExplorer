@@ -317,7 +317,7 @@ for(Primer in Primers){
         Phylopic_Check <- as.data.frame(Phylopic_Check)
         Phylopic_Check_IDs <- Phylopic_Check$UniqueID
         Phylopic_Append <- GBIF_Keys[!(Phylopic_IDs %in% Phylopic_Check_IDs),]
-        dbWriteTable(con,"Taxonomy_test",Phylopic_Append,row.names=FALSE,append=TRUE)
+        dbWriteTable(con,"Taxonomy",Phylopic_Append,row.names=FALSE,append=TRUE)
       } 
       if(dbExistsTable(con,"Taxonomy")==FALSE){
         dbWriteTable(con,"Taxonomy",GBIF_Keys,row.names=FALSE,append=TRUE)
