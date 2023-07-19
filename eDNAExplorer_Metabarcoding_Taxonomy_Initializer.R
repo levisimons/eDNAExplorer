@@ -1,4 +1,6 @@
+#!/usr/bin/env Rscript
 rm(list=ls())
+args = commandArgs(trailingOnly=TRUE)
 require(tidyr)
 require(sf)
 require(sp)
@@ -32,9 +34,8 @@ sapply(dbListConnections(Database_Driver), dbDisconnect)
 #Get project ID.
 #Rscript --vanilla eDNAExplorer_Metabarcoding_Taxonomy_Initializer.R "project ID string"
 if (length(args)==0) {
-  stop("Need a project ID.", call.=FALSE)
+  stop("Need a project ID", call.=FALSE)
 } else if (length(args)==1) {
-  # default output file
   ProjectID <- args[1]
 }
 
