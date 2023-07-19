@@ -1,4 +1,6 @@
+#!/usr/bin/env Rscript
 rm(list=ls())
+args = commandArgs(trailingOnly=TRUE)
 require(tidyr)
 require(sf)
 require(sp)
@@ -32,7 +34,8 @@ sapply(dbListConnections(Database_Driver), dbDisconnect)
 
 #Get project ID.
 #Rscript --vanilla eDNAExplorer_Metabarcoding_Metadata_Initializer.R "project ID string"
-if (length(args)<1) {
+# test if there is at least one argument: if not, return an error
+if (length(args)==0) {
   stop("Need a project ID", call.=FALSE)
 } else if (length(args)==1) {
   ProjectID <- args[1]
@@ -42,6 +45,8 @@ if (length(args)<1) {
 Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/projects",ProjectID,"METABARCODING.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
 Project_Data <- gsub("[\r\n]", "", Project_Data)
 Project_Data <- read.table(text = Project_Data,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+names(Project_Data) <- gsub(x = names(Project_Data), pattern = "ForwardPS", replacement = "Forward PS")
+names(Project_Data) <- gsub(x = names(Project_Data), pattern = "ReversePS", replacement = "Reverse PS")
 addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
 Project_Data$`Sample Date` <- anytime::anydate(Project_Data$`Sample Date`)
 Project_Data$`Data type` <- NULL
