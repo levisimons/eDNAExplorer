@@ -60,7 +60,7 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
   ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
   FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
   TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-
+  
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
   sapply(dbListConnections(Database_Driver), dbDisconnect)
@@ -73,13 +73,23 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
     SpeciesList_df <- as.data.frame(SpeciesList_df)
   }
   
+  #Save default blank plot if not enough data is available.
+  Stat_test <- "Not enough data to perform a Kruskal-Wallis test on alpha diversity."
+  p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
+  jfig <- plotly_json(p, FALSE)
+  filename <- paste("Alpha_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",AlphaDiversityMetric,"SpeciesList",SelectedSpeciesList,".json",sep="_")
+  filename <- gsub("_.json",".json",filename)
+  write(jfig,filename)
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("rm ",filename,sep=""))
+  
   #Read in metadata and filter it.
   Metadata <- tbl(con,"TronkoMetadata")
   Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
   Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date) %>%
     filter(ProjectID == sample_ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
   Metadata <- as.data.frame(Metadata)
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
+  Metadata$fastqid <- gsub("_","-",Metadata$fastqid)
   
   #Create sample metadata matrix
   Sample <- Metadata[!is.na(Metadata$fastqid),]
@@ -89,7 +99,6 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
   remaining_Samples <- rownames(Sample)
   
   #Read in Tronko output and filter it.
-  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
   if(sample_TaxonomicRank != "species"){
     TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
@@ -109,6 +118,7 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
     if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
     if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
   }
+  sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   if(nrow(TronkoDB) > 1){
     #Create OTU matrix
@@ -117,17 +127,17 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
     otumat <- otumat[,colnames(otumat) %in% unique(TronkoDB$SampleID)]
     otumat[sapply(otumat, is.character)] <- lapply(otumat[sapply(otumat, is.character)], as.numeric)
     OTU <- otu_table(as.matrix(otumat), taxa_are_rows = TRUE)
-
+    
     #Create merged Phyloseq object.
     physeq <- phyloseq(OTU,Sample)
     CountFilter <- physeq
-
+    
     #Filter on read abundance per sample.
     tmpFilter  = transform_sample_counts(CountFilter, function(x) x / sum(x) )
     tmpFiltered = filter_taxa(tmpFilter, function(x) sum(x) > sample_FilterThreshold, TRUE)
     keeptaxa <- taxa_names(tmpFiltered)
     AbundanceFiltered <- prune_taxa(keeptaxa,CountFilter)
-
+    
     if(EnvironmentalVariable %in% CategoricalVariables){
       #Store diversity versus variable data.
       tmp <- ggplot_build(plot_richness(AbundanceFiltered,x=EnvironmentalVariable,measures=AlphaDiversityMetric))
@@ -163,13 +173,14 @@ alpha <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRa
         theme_bw()+geom_point()+geom_smooth()
     }
   } else {
-      Stat_test <- "Not enough data to perform a Kruskal-Wallis test on alpha diversity."
-      p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
+    Stat_test <- "Not enough data to perform a Kruskal-Wallis test on alpha diversity."
+    p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
   }
   #Save plot as json object
   jfig <- plotly_json(p, FALSE)
-  filename <- paste("Alpha_Metabarcoding_Project",sample_ProjectID,"FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"DiversityMetric",AlphaDiversityMetric,"SpeciesList",gsub(".csv",".json",SelectedSpeciesList),sep="_")
+  filename <- paste("Alpha_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",AlphaDiversityMetric,"SpeciesList",SelectedSpeciesList,".json",sep="_")
+  filename <- gsub("_.json",".json",filename)
   write(jfig,filename)
-  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))  
 }
