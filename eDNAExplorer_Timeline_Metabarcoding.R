@@ -38,7 +38,7 @@ timeline <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,Coun
   
   #Select taxon to map.
   #User input
-  ProjectID <- as.character(ProjectID)
+  Project_ID <- as.character(ProjectID)
   Taxon <- Taxon_name
   #Get GBIF taxonomy key for taxon.
   Taxon_GBIF <- name_backbone(name=Taxon,rank=TaxonomicRank)$usageKey
@@ -52,8 +52,8 @@ timeline <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,Coun
   
   #Filter GBIF occurrences to a particular taxon.
   GBIFDB <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
-                                coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
-                                occurrencestatus=="PRESENT",taxonkey==Taxon_GBIF) %>% select(year)
+                            coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
+                            occurrencestatus=="PRESENT",taxonkey==Taxon_GBIF) %>% select(year)
   GBIFDB <- as.data.frame(GBIFDB)
   
   if(nrow(GBIFDB) < 1){
@@ -74,6 +74,7 @@ timeline <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,Coun
   TaxonDB <- TronkoInput %>% filter(!!sym(TaxonomicRank) == Taxon) %>% 
     select(ProjectID,SampleID) %>% distinct_all()
   TaxonDB <- as.data.frame(TaxonDB)
+  TaxonDB$SampleID <- gsub("-","_",TaxonDB$SampleID)
   
   #Filter Tronko output by mismatches, sample count, and relative abundance
   TronkoDB <- TronkoInput %>% filter(Primer == Marker) %>% 
@@ -82,6 +83,7 @@ timeline <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,Coun
     summarise(n=n()) %>% mutate(freq=n/sum(n)) %>% 
     ungroup() %>% filter(freq > FilterThreshold) %>% select(-n,-freq)
   TronkoDB <- as.data.frame(TronkoDB)
+  TronkoDB$SampleID <- gsub("-","_",TronkoDB$SampleID)
   
   #Get samples where taxon occurs and meets Tronko filters.
   TaxonDB <- TaxonDB[TaxonDB$SampleID %in% TronkoDB$SampleID,]
@@ -107,7 +109,7 @@ timeline <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,Coun
   #Merge eDNA and GBIF timeline data.
   Timeline <- merge(Taxa_Time,eDNA,by="year",all=T)
   Timeline <- Timeline[rowSums(is.na(Timeline)) != ncol(Timeline), ]
-
+  
   #Export file for plotting.
   Timeline <- toJSON(Timeline)
   filename <- paste("Timeline_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(FilterThreshold,scientific=F),".json",sep="")
