@@ -43,6 +43,15 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
   CountThreshold <- as.numeric(CountThreshold)
   FilterThreshold <- as.numeric(FilterThreshold)
   SelectedSpeciesList <- as.character(SpeciesList)
+  Project_ID <- as.character(ProjectID)
+  
+  #Generate the output filename for cached plots.
+  filename <- paste("Prevalence_Metabarcoding_Project",Project_ID,"FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,sep="_")
+  filename <- paste(filename,".json",sep="")
+  #Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
+  write(toJSON(data.frame(error=c("No results found"))),filename)
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("rm ",filename,sep=""))
   
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
@@ -56,73 +65,49 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
     SpeciesList_df <- as.data.frame(SpeciesList_df)
   }
   
-  #Read in metadata and filter it.
-  Metadata <- tbl(con,"TronkoMetadata")
-  Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
-  Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date) %>%
-    filter(ProjectID == ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
-  Metadata <- as.data.frame(Metadata)
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
-  
   #Read in Tronko output and filter it.
-  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
-  if(TaxonomicRank != "kingdom"){
-    TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Marker) %>% 
-      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
-      group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
-      select(SampleID,TaxonomicRanks)
-    TronkoDB <- as.data.frame(TronkoInput)
-    if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & na.omit(TronkoDB$species) %in% SpeciesList_df$name,]}
-    if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
-    TronkoDB$species <- NULL
-  } else{
-    TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Marker) %>% 
-      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
-      group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
-      select(SampleID,TaxonomicRanks)
-    TronkoDB <- as.data.frame(TronkoInput)
-    if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & na.omit(TronkoDB$species) %in% SpeciesList_df$name,]}
-    if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
-  }
-
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
-
+  TronkoInput <- TronkoInput %>% filter(ProjectID == Project_ID) %>% filter(Primer == Marker) %>% 
+    filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
+    group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
+    select(SampleID,TaxonomicRanks)
+  TronkoDB <- as.data.frame(TronkoInput)
+  
   #Read in Taxonomy output and filter it.
-  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TaxonomyInput <- tbl(con,"Taxonomy")
-  TaxaList <- na.omit(unique(TronkoDB[,TaxonomicRank]))
+  if(nrow(TronkoDB)>0){TaxaList <- na.omit(unique(TronkoDB[,TaxonomicRank]))}
+  if(nrow(TronkoDB)==0){TaxaList <- c()}
   if(TaxonomicRank!="kingdom"){TaxonomyInput <- TaxonomyInput %>% filter(rank == TaxonomicRank) %>% filter(Taxon %in% TaxaList) %>% select(Taxon,Common_Name,Image_URL)}
-  TaxonomyDB <-  as.data.frame(TaxonomyInput)
+  TaxonomyDB <- as.data.frame(TaxonomyInput)
   colnames(TaxonomyDB) <- c(TaxonomicRank,"Common_Name","Image_URL")
   if(TaxonomicRank=="kingdom"){
-           TaxonomyDB <- data.frame(kingdom=c("Fungi","Plantae","Animalia","Bacteria","Archaea","Protista","Monera","Chromista"),
-                                    Image_URL=c("https://images.phylopic.org/images/7ebbf05d-2084-4204-ad4c-2c0d6cbcdde1/raster/958x1536.png",
-                                               "https://images.phylopic.org/images/573bc422-3b14-4ac7-9df0-27d7814c099d/raster/1052x1536.png",
-                                               "https://images.phylopic.org/images/0313dc90-c1e2-467e-aacf-0f7508c92940/raster/681x1536.png",
-                                               "https://images.phylopic.org/images/d8c9f603-8930-4973-9a37-e9d0bc913a6b/raster/1536x1128.png",
-                                               "https://images.phylopic.org/images/7ccfe198-154b-4a2f-a7bf-60390cfe6135/raster/1177x1536.png",
-                                               "https://images.phylopic.org/images/4641171f-e9a6-4696-bdda-e29bc4508538/raster/336x1536.png",
-                                               "https://images.phylopic.org/images/018ee72f-fde6-4bc3-9b2e-087d060ee62d/raster/872x872.png",
-                                               "https://images.phylopic.org/images/1fd55f6f-553c-4838-94b4-259c16f90c31/raster/1054x1536.png"))
+    TaxonomyDB <- data.frame(kingdom=c("Fungi","Plantae","Animalia","Bacteria","Archaea","Protista","Monera","Chromista"),
+                             Image_URL=c("https://images.phylopic.org/images/7ebbf05d-2084-4204-ad4c-2c0d6cbcdde1/raster/958x1536.png",
+                                         "https://images.phylopic.org/images/573bc422-3b14-4ac7-9df0-27d7814c099d/raster/1052x1536.png",
+                                         "https://images.phylopic.org/images/0313dc90-c1e2-467e-aacf-0f7508c92940/raster/681x1536.png",
+                                         "https://images.phylopic.org/images/d8c9f603-8930-4973-9a37-e9d0bc913a6b/raster/1536x1128.png",
+                                         "https://images.phylopic.org/images/7ccfe198-154b-4a2f-a7bf-60390cfe6135/raster/1177x1536.png",
+                                         "https://images.phylopic.org/images/4641171f-e9a6-4696-bdda-e29bc4508538/raster/336x1536.png",
+                                         "https://images.phylopic.org/images/018ee72f-fde6-4bc3-9b2e-087d060ee62d/raster/872x872.png",
+                                         "https://images.phylopic.org/images/1fd55f6f-553c-4838-94b4-259c16f90c31/raster/1054x1536.png"))
+  }
+  #Filter by relative abundance per taxon per sample.
+  if(nrow(TronkoDB)>0){
+    TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
+    KingdomMatch <- TronkoDB[,c("kingdom",TaxonomicRank)]
+    KingdomMatch <- KingdomMatch[!duplicated(KingdomMatch),]
+    KingdomMatch <- as.data.frame(KingdomMatch)
+    TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
+      dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
+      dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
+    TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
+    TronkoDB <- as.data.frame(TronkoDB)
+    if(TaxonomicRank!="kingdom"){TronkoDB <- dplyr::left_join(TronkoDB,KingdomMatch)}
+    TronkoDB <- dplyr::left_join(TronkoDB,TaxonomyDB)
+    TronkoDB <- toJSON(TronkoDB)
+    write(TronkoDB,filename)
+    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("rm ",filename,sep=""))
   }
   sapply(dbListConnections(Database_Driver), dbDisconnect)
-  
-  #Filter by relative abundance per taxon per sample.
-  TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
-  KingdomMatch <- TronkoDB[,c("kingdom",TaxonomicRank)]
-  KingdomMatch <- KingdomMatch[!duplicated(KingdomMatch),]
-  KingdomMatch <- as.data.frame(KingdomMatch)
-  TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
-    dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
-    dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
-  TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
-  TronkoDB <- as.data.frame(TronkoDB)
-  if(TaxonomicRank!="kingdom"){TronkoDB <- dplyr::left_join(TronkoDB,KingdomMatch)}
-  TronkoDB <- dplyr::left_join(TronkoDB,TaxonomyDB)
-  TronkoDB <- toJSON(TronkoDB)
-  filename <- paste("Prevalence_Metabarcoding_Project",ProjectID,"FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",gsub(".csv",".json",SelectedSpeciesList),sep="_")
-  write(TronkoDB,filename)
-  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  system(paste("rm ",filename,sep=""))
 }
