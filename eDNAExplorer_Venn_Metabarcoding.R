@@ -47,7 +47,8 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   CountThreshold <- as.numeric(CountThreshold)
   FilterThreshold <- as.numeric(FilterThreshold)
   SelectedSpeciesList <- as.character(SpeciesList)
-           
+  Project_ID <- as.character(ProjectID)
+  
   #Establish sql connection
   Database_Driver <- dbDriver("PostgreSQL")
   sapply(dbListConnections(Database_Driver), dbDisconnect)
@@ -64,15 +65,14 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   Metadata <- tbl(con,"TronkoMetadata")
   #Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
   Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date) %>%
-    filter(ProjectID == ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude))
+    filter(ProjectID == Project_ID) %>% filter(!is.na(latitude) & !is.na(longitude))
   Metadata <- as.data.frame(Metadata)
-  dbDisconnect(con)
+  Metadata$fastqid <- gsub("_","-",Metadata$fastqid)
   
   #Read in Tronko output and filter it.
-  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
   if(TaxonomicRank != "species"){
-    TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Marker) %>% 
+    TronkoInput <- TronkoInput %>% filter(ProjectID == Project_ID) %>% filter(Primer == Marker) %>% 
       filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
       group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
       select(SampleID,species,TaxonomicRank)
@@ -81,7 +81,7 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
     TronkoDB$species <- NULL
   } else{
-    TronkoInput <- TronkoInput %>% filter(ProjectID == ProjectID) %>% filter(Primer == Marker) %>% 
+    TronkoInput <- TronkoInput %>% filter(ProjectID == Project_ID) %>% filter(Primer == Marker) %>% 
       filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
       group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
       select(SampleID,TaxonomicRank)
@@ -89,22 +89,22 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name,]}
     if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
   }
-           
+  
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   
   #Filter by relative abundance per taxon per sample.
   if(nrow(TronkoDB) > 1){
-             TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
-             TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
-               dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
-               dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
-             TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
-             TronkoDB <- as.data.frame(TronkoDB)
-
-             #Get unique taxa list from Tronko-assign
-             Tronko_Taxa <- na.omit(unique(TronkoDB[,TaxonomicRank]))
+    TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
+    TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
+      dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
+      dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
+    TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
+    TronkoDB <- as.data.frame(TronkoDB)
+    
+    #Get unique taxa list from Tronko-assign
+    Tronko_Taxa <- na.omit(unique(TronkoDB[,TaxonomicRank]))
   } else {
-           Tronko_Taxa <- c()
+    Tronko_Taxa <- c()
   }
   
   #Read in GBIF occurrences.
@@ -149,8 +149,9 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     Taxa_Nation <- na.omit(unique(Taxa_Nation[,TaxonomicRank]))
     venn_list <- toJSON(list(GBIF=Taxa_Nation,eDNA=Tronko_Taxa))
   }
-  filename <- paste("Venn_Metabarcoding_Project",ProjectID,"FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",gsub(".csv",".json",SelectedSpeciesList),"GeographicScale",Geographic_Scale,sep="_")
+  filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,".json",sep="_")
+  filename <- gsub("_.json",".json",filename)
   write(venn_list,filename)
-  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))
 }
