@@ -38,7 +38,7 @@ map <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThre
   
   #Select taxon to map.
   #User input
-  ProjectID <- as.character(ProjectID)
+  Project_ID <- as.character(ProjectID)
   Taxon <- Taxon_name
   #Get GBIF taxonomy key for taxon.
   Taxon_GBIF <- name_backbone(name=Taxon,rank=TaxonomicRank)$usageKey
@@ -70,7 +70,7 @@ map <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThre
     TaxonMap$source <- "GBIF"
     TaxonMap <- TaxonMap[,c("source","longitude","latitude")]
   }
-
+  
   #Read in Tronko output.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   TronkoInput <- tbl(con,"TronkoOutput")
@@ -79,6 +79,7 @@ map <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThre
   TaxonDB <- TronkoInput %>% filter(!!sym(TaxonomicRank) == Taxon) %>% 
     select(ProjectID,SampleID) %>% distinct_all()
   TaxonDB <- as.data.frame(TaxonDB)
+  TaxonDB$SampleID <- gsub("-","_",TaxonDB$SampleID)
   
   #Filter Tronko output by mismatches, sample count, and relative abundance
   TronkoDB <- TronkoInput %>% filter(Primer == Marker) %>% 
@@ -87,6 +88,7 @@ map <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThre
     summarise(n=n()) %>% mutate(freq=n/sum(n)) %>% 
     ungroup() %>% filter(freq > FilterThreshold) %>% select(-n,-freq)
   TronkoDB <- as.data.frame(TronkoDB)
+  TronkoDB$SampleID <- gsub("-","_",TronkoDB$SampleID)
   
   #Get samples where taxon occurs and meets Tronko filters.
   TaxonDB <- TaxonDB[TaxonDB$SampleID %in% TronkoDB$SampleID,]
@@ -99,6 +101,7 @@ map <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThre
     filter(projectid %in% taxon_projects) %>% filter(fastqid %in% taxon_samples) %>%
     select(longitude,latitude)
   Metadata_Filtered <- as.data.frame(Metadata_Filtered)
+  
   Metadata_Filtered$source <- "eDNA"
   Metadata_Filtered <- Metadata_Filtered[,c("source","longitude","latitude")]
   
@@ -109,6 +112,6 @@ map <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThre
   Taxon_Map_Data <- jsonlite::toJSON(Taxon_Map_Data)
   filename <- paste("Map_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(FilterThreshold,scientific=F),".json",sep="")
   write(Taxon_Map_Data,filename)
-  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))
 }
