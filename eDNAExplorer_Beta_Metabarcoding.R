@@ -73,14 +73,25 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     SpeciesList_df <- as.data.frame(SpeciesList_df)
   }
   
+  #Save a default blank beta diversity plot.
+  Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
+  p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
+  jfig <- plotly_json(p, FALSE)
+  filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,",json",sep="_")
+  filename <- gsub("_.json",".json",filename)
+  write(jfig,filename)
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("rm ",filename,sep=""))
+  
   #Read in metadata and filter it.
   Metadata <- tbl(con,"TronkoMetadata")
   Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
   Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date) %>%
     filter(ProjectID == sample_ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
   Metadata <- as.data.frame(Metadata)
+  Metadata$fastqid <- gsub("_","-",Metadata$fastqid)
   Metadata <- Metadata[!is.na(Metadata[,EnvironmentalVariable]),]
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
+  
   if(nrow(Metadata)>0){
     #Create sample metadata matrix
     Sample <- Metadata[!is.na(Metadata$fastqid),]
@@ -90,7 +101,6 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     remaining_Samples <- rownames(Sample)
     
     #Read in Tronko output and filter it.
-    con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
     TronkoInput <- tbl(con,"TronkoOutput")
     if(sample_TaxonomicRank != "species"){
       TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
@@ -160,13 +170,14 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
       p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
     }
   } else {
-      Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
-      p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
-    }
-    #Save plot as json object
-    jfig <- plotly_json(p, FALSE)
-    filename <- paste("Beta_Metabarcoding_Project",sample_ProjectID,"FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"DiversityMetric",BetaDiversityMetric,"SpeciesList",gsub(".csv",".json",SelectedSpeciesList),sep="_")
-    write(jfig,filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-    system(paste("rm ",filename,sep=""))
+    Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
+    p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
+  }
+  #Save plot as json object
+  jfig <- plotly_json(p, FALSE)
+  filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,",json",sep="_")
+  filename <- gsub("_.json",".json",filename)
+  write(jfig,filename)
+  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+  system(paste("rm ",filename,sep=""))
 }
