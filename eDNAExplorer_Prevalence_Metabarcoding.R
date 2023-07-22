@@ -46,7 +46,7 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
   Project_ID <- as.character(ProjectID)
   
   #Generate the output filename for cached plots.
-  filename <- paste("Prevalence_Metabarcoding_Project",Project_ID,"FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,sep="_")
+  filename <- paste("Prevalence_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,sep="_")
   filename <- paste(filename,".json",sep="")
   #Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
   write(toJSON(data.frame(error=c("No results found"))),filename)
