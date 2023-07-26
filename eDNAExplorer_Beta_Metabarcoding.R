@@ -87,7 +87,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   Metadata <- tbl(con,"TronkoMetadata")
   Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
   Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date) %>%
-    filter(ProjectID == sample_ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
+    filter(projectid == sample_ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
   Metadata <- as.data.frame(Metadata)
   Metadata$fastqid <- gsub("_","-",Metadata$fastqid)
   Metadata <- Metadata[!is.na(Metadata[,EnvironmentalVariable]),]
@@ -101,10 +101,12 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     remaining_Samples <- rownames(Sample)
     
     #Read in Tronko output and filter it.
-    TronkoInput <- tbl(con,"TronkoOutput")
+    TronkoFile <- paste(Marker,".csv",sep="")
+    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",sample_ProjectID,"/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset.csv",sep=""))
+    TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
     if(sample_TaxonomicRank != "species"){
-      TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
-        filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
+      TronkoInput <- TronkoInput %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
         group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
         select(SampleID,species,sample_TaxonomicRank)
       TronkoDB <- as.data.frame(TronkoInput)
@@ -112,15 +114,13 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
       if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
       TronkoDB$species <- NULL
     } else{
-      TronkoInput <- TronkoInput %>% filter(ProjectID == sample_ProjectID) %>% filter(Primer == sample_Primer) %>% 
-        filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
+      TronkoInput <- TronkoInput %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
         group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
         select(SampleID,sample_TaxonomicRank)
       TronkoDB <- as.data.frame(TronkoInput)
       if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
       if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
     }
-    
     sapply(dbListConnections(Database_Driver), dbDisconnect)
     
     if(nrow(TronkoDB)>1){
