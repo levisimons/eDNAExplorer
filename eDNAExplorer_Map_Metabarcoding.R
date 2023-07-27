@@ -96,10 +96,6 @@ map <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThre
   taxon_samples <- unique(TaxonDB$SampleID)
   taxon_projects <- unique(TaxonDB$ProjectID)
   
-  #Get samples where taxon occurs and meets Tronko filters.
-  taxon_samples <- unique(TaxonDB$SampleID)
-  taxon_projects <- unique(TaxonDB$ProjectID)
-  
   #Read in metadata and filter it.
   con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   Metadata <- tbl(con,"TronkoMetadata")
