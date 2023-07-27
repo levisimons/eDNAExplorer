@@ -75,19 +75,25 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
   Metadata$fastqid <- gsub("_","-",Metadata$fastqid)
   
   #Read in Tronko output and filter it.
-  TronkoFile <- paste(Marker,".csv",sep="")
-  system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",Project_ID,"/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-  system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset.csv",sep=""))
-  TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-  TronkoInput <- TronkoInput %>% filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank)))
-  TronkoDB <- as.data.frame(TronkoInput)
-  TronkoDB <- TronkoInput %>% group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
-    select(SampleID,TaxonomicRanks)
-  TronkoDB <- as.data.frame(TronkoDB)
-  if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name,]}
-  if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
-  system(paste("rm ",TronkoFile,sep=""))
-  system("rm subset.csv")
+  TronkoInput <- tbl(con,"TronkoOutput")
+  if(TaxonomicRank != "species"){
+    TronkoInput <- TronkoInput %>% filter(ProjectID == Project_ID) %>% filter(Primer == Marker) %>% 
+      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
+      group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
+      select(SampleID,species,TaxonomicRank)
+    TronkoDB <- as.data.frame(TronkoInput)
+    if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name,]}
+    if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
+    TronkoDB$species <- NULL
+  } else{
+    TronkoInput <- TronkoInput %>% filter(ProjectID == Project_ID) %>% filter(Primer == Marker) %>% 
+      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
+      group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
+      select(SampleID,TaxonomicRank)
+    TronkoDB <- as.data.frame(TronkoInput)
+    if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name,]}
+    if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
+  }
   
   #Read in Taxonomy output and filter it.
   TaxonomyInput <- tbl(con,"Taxonomy")
