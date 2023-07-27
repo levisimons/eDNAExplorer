@@ -91,6 +91,8 @@ map <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThre
   }
   TaxonDB <- TronkoDB[!duplicated(TronkoDB),]
   TaxonDB$SampleID <- gsub("-","_",TaxonDB$SampleID)
+  system(paste("rm",TronkoFile,sep=" "))
+  system("rm subset.csv")
   
   #Get samples where taxon occurs and meets Tronko filters.
   taxon_samples <- unique(TaxonDB$SampleID)
