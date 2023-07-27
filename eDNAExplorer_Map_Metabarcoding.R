@@ -10,6 +10,7 @@ require(RPostgreSQL)
 require(lubridate)
 require(plotly)
 require(jsonlite)
+require(data.table)
 
 readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
@@ -71,31 +72,36 @@ map <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThre
     TaxonMap <- TaxonMap[,c("source","longitude","latitude")]
   }
   
-  #Read in Tronko output.
-  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
-  TronkoInput <- tbl(con,"TronkoOutput")
-  
-  #Get samples where taxon occurs in general.
-  TaxonDB <- TronkoInput %>% filter(!!sym(TaxonomicRank) == Taxon) %>% 
-    select(ProjectID,SampleID) %>% distinct_all()
-  TaxonDB <- as.data.frame(TaxonDB)
+  #Read in Tronko output and filter it.
+  TronkoFile <- paste(Marker,".csv",sep="")
+  system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",Project_ID,"/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+  system(paste("cut -d ',' -f 2,6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset.csv",sep=""))
+  TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+  if(TaxonomicRank != "species"){
+    TronkoInput <- TronkoInput %>% filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
+      group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
+      select(ProjectID,SampleID,species,TaxonomicRank)
+    TronkoDB <- as.data.frame(TronkoInput)
+    TronkoDB$species <- NULL
+  } else{
+    TronkoInput <- TronkoInput %>% filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
+      group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
+      select(ProjectID,SampleID,TaxonomicRank)
+    TronkoDB <- as.data.frame(TronkoInput)
+  }
+  TaxonDB <- TronkoDB[!duplicated(TronkoDB),]
   TaxonDB$SampleID <- gsub("-","_",TaxonDB$SampleID)
   
-  #Filter Tronko output by mismatches, sample count, and relative abundance
-  TronkoDB <- TronkoInput %>% filter(Primer == Marker) %>% 
-    filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% 
-    group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
-    summarise(n=n()) %>% mutate(freq=n/sum(n)) %>% 
-    ungroup() %>% filter(freq > FilterThreshold) %>% select(-n,-freq)
-  TronkoDB <- as.data.frame(TronkoDB)
-  TronkoDB$SampleID <- gsub("-","_",TronkoDB$SampleID)
+  #Get samples where taxon occurs and meets Tronko filters.
+  taxon_samples <- unique(TaxonDB$SampleID)
+  taxon_projects <- unique(TaxonDB$ProjectID)
   
   #Get samples where taxon occurs and meets Tronko filters.
-  TaxonDB <- TaxonDB[TaxonDB$SampleID %in% TronkoDB$SampleID,]
   taxon_samples <- unique(TaxonDB$SampleID)
   taxon_projects <- unique(TaxonDB$ProjectID)
   
   #Read in metadata and filter it.
+  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
   Metadata <- tbl(con,"TronkoMetadata")
   Metadata_Filtered <- Metadata %>% filter(!is.na(latitude) & !is.na(longitude)) %>%
     filter(projectid %in% taxon_projects) %>% filter(fastqid %in% taxon_samples) %>%
@@ -111,6 +117,8 @@ map <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThre
   #Return results
   Taxon_Map_Data <- jsonlite::toJSON(Taxon_Map_Data)
   filename <- paste("Map_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(FilterThreshold,scientific=F),".json",sep="")
+  filename <- tolower(filename)
+  filename <- gsub(" ","_",filename)
   write(Taxon_Map_Data,filename)
   system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))
