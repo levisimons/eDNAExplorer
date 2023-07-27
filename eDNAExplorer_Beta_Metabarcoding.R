@@ -122,6 +122,8 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
       if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
     }
     sapply(dbListConnections(Database_Driver), dbDisconnect)
+    system(paste("rm",TronkoFile,sep=" "))
+    system("rm subset.csv")
     
     if(nrow(TronkoDB)>1){
       #Create OTU matrix
