@@ -95,6 +95,8 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
     if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name,]}
     if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
   }
+  system(paste("rm",TronkoFile,sep=" "))
+  system("rm subset.csv")
   
   #Read in Taxonomy output and filter it.
   TaxonomyInput <- tbl(con,"Taxonomy")
