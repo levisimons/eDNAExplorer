@@ -91,6 +91,8 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
   }
   sapply(dbListConnections(Database_Driver), dbDisconnect)
+  system(paste("rm",TronkoFile,sep=" "))
+  system("rm subset.csv")
   
   #Filter by relative abundance per taxon per sample.
   if(nrow(TronkoDB) > 1){
