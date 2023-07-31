@@ -4,7 +4,6 @@ require(tidyr)
 require(dplyr)
 require(lubridate)
 require(jsonlite)
-require(jsonlite)
 require(data.table)
 require(DBI)
 require(RPostgreSQL)
@@ -126,12 +125,24 @@ prevalence <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxono
     TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
       dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
       dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
+    num_filteredSamples <- length(unique(TronkoDB$SampleID))
     TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
     TronkoDB <- as.data.frame(TronkoDB)
     if(TaxonomicRank!="kingdom"){TronkoDB <- dplyr::left_join(TronkoDB,KingdomMatch)}
     TronkoDB <- dplyr::left_join(TronkoDB,TaxonomyDB)
-    TronkoDB <- toJSON(TronkoDB)
-    write(TronkoDB,filename)
+    if(TaxonomicRank!="kingdom"){
+      colnames(TronkoDB)[which(names(TronkoDB)==TaxonomicRank)] <- "Latin_Name"
+    }
+    if(TaxonomicRank=="kingdom"){
+      TronkoDB$Latin_Name <- TronkoDB$kingdom
+    }
+    #Insert the number of samples and number of samples post-filtering as a return object.
+    SampleDB <- data.frame(matrix(ncol=2,nrow=1))
+    colnames(SampleDB) <- c("totalSamples","filteredSamples")
+    SampleDB$totalSamples <- nrow(Metadata)
+    SampleDB$filteredSamples <- num_filteredSamples
+    datasets <- list(datasets = list(results=TronkoDB,metadata=SampleDB))
+    write(toJSON(datasets),filename)
     system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
   }
