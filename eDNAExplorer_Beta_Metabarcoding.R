@@ -79,6 +79,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   jfig <- plotly_json(p, FALSE)
   filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,",json",sep="_")
   filename <- gsub("_.json",".json",filename)
+  filename <- tolower(filename)
   write(jfig,filename)
   system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))
@@ -175,11 +176,19 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
     p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
   }
+  
+  #Insert the number of samples and number of samples post-filtering as a return object.
+  SampleDB <- data.frame(matrix(ncol=2,nrow=1))
+  colnames(SampleDB) <- c("totalSamples","filteredSamples")
+  SampleDB$totalSamples <- nrow(Metadata)
+  SampleDB$filteredSamples <- nsamples(AbundanceFiltered)
+  datasets <- list(datasets = list(results=plotly_json(p, FALSE),metadata=toJSON(SampleDB)))
+  
   #Save plot as json object
-  jfig <- plotly_json(p, FALSE)
   filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,",json",sep="_")
   filename <- gsub("_.json",".json",filename)
-  write(jfig,filename)
+  filename <- tolower(filename)
+  write(toJSON(datasets),filename)
   system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))
 }
