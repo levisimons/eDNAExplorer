@@ -124,6 +124,33 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   }
   system(paste("rm",TronkoFile,sep=" "))
   system("rm subset*.csv")
+
+  #Filter by relative abundance per taxon per sample.
+  if(nrow(TronkoDB) > 1){
+    TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
+    TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
+      dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
+      dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
+    num_filteredSamples <- length(unique(TronkoDB$SampleID))
+    TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
+    TronkoDB <- as.data.frame(TronkoDB)
+    
+    #Get unique taxa list from Tronko-assign
+    Tronko_Taxa <- na.omit(unique(TronkoDB[,TaxonomicRank]))
+    Tronko_Taxa <- as.data.frame(Tronko_Taxa)
+    colnames(Tronko_Taxa) <- c("eDNA")
+  } else {
+    Tronko_Taxa <- data.frame(matrix(ncol=1,nrow=1))
+    colnames(Tronko_Taxa) <- c("eDNA")
+    Tronko_Taxa$eDNA <- NA
+    num_filteredSamples <- 0
+  }
+
+  #Insert the number of samples and number of samples post-filtering as a return object.
+  SampleDB <- data.frame(matrix(ncol=2,nrow=1))
+  colnames(SampleDB) <- c("totalSamples","filteredSamples")
+  SampleDB$totalSamples <- nrow(Metadata)
+  SampleDB$filteredSamples <- num_filteredSamples
   
   #Read in Taxonomy output and filter it.
   TaxonomyInput <- tbl(con,"Taxonomy")
@@ -158,15 +185,6 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   ProjectDB$quarter <- quarters(as.Date(ProjectDB$sample_date))
   #Get year
   ProjectDB$year <- lubridate::year(ProjectDB$sample_date)
-  
-  #Filter by relative abundance per taxon per sample.
-  if(nrow(TronkoDB)>0){
-    TronkoDB <- TronkoDB[!is.na(ProjectDB[,TaxonomicRank]),]
-    TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
-      dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
-      dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
-    TronkoDB <- as.data.frame(TronkoDB) 
-  }
   
   #Filter merged data.
   ProjectDB <- dplyr::inner_join(TronkoDB,ProjectDB,multiple="all")
@@ -212,11 +230,11 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   ProjectDB_byTime <- as.data.frame(ProjectDB_byTime)
   #Merge in taxonomy data.
   ProjectDB_byTime <- dplyr::left_join(ProjectDB_byTime,TaxonomyDB)
-  ProjectDB_byTime <- toJSON(ProjectDB_byTime)
   filename <- paste("PresenceByTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
   filename <- gsub("_.json",".json",filename)
   filename <- tolower(filename)
-  write(ProjectDB_byTime,filename)
+  datasets <- list(datasets = list(results=ProjectDB_byTime,metadata=SampleDB))
+  write(toJSON(datasets),filename)        
   system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))
   
@@ -228,11 +246,11 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   ProjectDB_bySite <- as.data.frame(ProjectDB_bySite)
   #Merge in taxonomy data.
   ProjectDB_bySite <- dplyr::left_join(ProjectDB_bySite,TaxonomyDB)
-  ProjectDB_bySite <- toJSON(ProjectDB_bySite)
   filename <- paste("PresenceBySite_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
   filename <- gsub("_.json",".json",filename)
   filename <- tolower(filename)
-  write(ProjectDB_bySite,filename)
+  datasets <- list(datasets = list(results=ProjectDB_bySite,metadata=SampleDB))
+  write(toJSON(datasets),filename)
   system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))
   
@@ -274,11 +292,11 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   ProjectDB_bySiteTime <- as.data.frame(ProjectDB_bySiteTime)
   #Merge in taxonomy data.
   ProjectDB_bySiteTime <- dplyr::left_join(ProjectDB_bySiteTime,TaxonomyDB)
-  ProjectDB_bySiteTime <- toJSON(ProjectDB_bySiteTime)
   filename <- paste("PresenceBySiteAndTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
   filename <- gsub("_.json",".json",filename)
   filename <- tolower(filename)
-  write(ProjectDB_bySiteTime,filename)
+  datasets <- list(datasets = list(results=ProjectDB_bySiteTime,metadata=SampleDB))
+  write(toJSON(datasets),filename)
   system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))
   
