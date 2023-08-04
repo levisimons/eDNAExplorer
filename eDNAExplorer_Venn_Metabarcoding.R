@@ -72,8 +72,12 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   #Read in Tronko output and filter it.
   TronkoFile <- paste(Marker,".csv",sep="")
   system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",Project_ID,"/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-  system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset.csv",sep=""))
-  TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+  #Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
+  system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset1.csv",sep=""))
+  #Filter on the number of mismatches.  Remove entries with NA for mismatches and for the selected taxonomic rank.
+  TaxonomicNum <- which(TaxonomicRanks==TaxonomicRank)+1
+  system(paste("awk -F',' 'NR == 1 || ( $10 != \"\" && $",TaxonomicNum," != \"\")' subset1.csv > subset2.csv",sep=""))
+  TronkoInput <- fread(file="subset2.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
   if(TaxonomicRank != "species"){
     TronkoInput <- TronkoInput %>% filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
       group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
@@ -92,7 +96,7 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
   }
   sapply(dbListConnections(Database_Driver), dbDisconnect)
   system(paste("rm",TronkoFile,sep=" "))
-  system("rm subset.csv")
+  system("rm subset*.csv")
   
   #Filter by relative abundance per taxon per sample.
   if(nrow(TronkoDB) > 1){
@@ -100,13 +104,19 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
       dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
       dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
+    num_filteredSamples <- length(unique(TronkoDB$SampleID))
     TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
     TronkoDB <- as.data.frame(TronkoDB)
     
     #Get unique taxa list from Tronko-assign
     Tronko_Taxa <- na.omit(unique(TronkoDB[,TaxonomicRank]))
+    Tronko_Taxa <- as.data.frame(Tronko_Taxa)
+    colnames(Tronko_Taxa) <- c("eDNA")
   } else {
-    Tronko_Taxa <- c()
+    Tronko_Taxa <- data.frame(matrix(ncol=1,nrow=1))
+    colnames(Tronko_Taxa) <- c("eDNA")
+    Tronko_Taxa$eDNA <- NA
+    num_filteredSamples <- 0
   }
   
   #Read in GBIF occurrences.
@@ -129,32 +139,42 @@ venn <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
                                   occurrencestatus=="PRESENT",
                                   decimallongitude >= Local_West & decimallongitude <= Local_East & decimallatitude >= Local_South & decimallatitude <= Local_North) %>% 
       select(!!sym(TaxonomicRank))
-    Taxa_Local <- as.data.frame(Taxa_Local)
-    Taxa_Local <- na.omit(unique(Taxa_Local[,TaxonomicRank]))
-    venn_list <- toJSON(list(GBIF=Taxa_Local,eDNA=Tronko_Taxa))
+    Taxa_GBIF <- as.data.frame(Taxa_Local)
+    Taxa_GBIF <- na.omit(unique(Taxa_GBIF[,TaxonomicRank]))
+    Taxa_GBIF <- as.data.frame(Taxa_GBIF)
+    colnames(Taxa_GBIF) <- c("Taxa_Local")
   }
   if(Geographic_Scale=="State"){
     #Clip GBIF occurrence locations by state/province boundaries.
     Taxa_State <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
                                   coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
                                   occurrencestatus=="PRESENT", stateprovince %in% state_province_list) %>% select(!!sym(TaxonomicRank))
-    Taxa_State <- as.data.frame(Taxa_State)
-    Taxa_State <- na.omit(unique(Taxa_State[,TaxonomicRank]))
-    venn_list <- toJSON(list(GBIF=Taxa_State,eDNA=Tronko_Taxa))
+    Taxa_GBIF <- as.data.frame(Taxa_State)
+    Taxa_GBIF <- na.omit(unique(Taxa_GBIF[,TaxonomicRank]))
+    Taxa_GBIF <- as.data.frame(Taxa_GBIF)
+    colnames(Taxa_GBIF) <- c("Taxa_State")
   }
   if(Geographic_Scale=="Nation"){
     #Clip GBIF occurrence locations by national boundaries.
     Taxa_Nation <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
                                    coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
                                    occurrencestatus=="PRESENT", countrycode %in% country_list) %>% select(!!sym(TaxonomicRank))
-    Taxa_Nation <- as.data.frame(Taxa_Nation)
-    Taxa_Nation <- na.omit(unique(Taxa_Nation[,TaxonomicRank]))
-    venn_list <- toJSON(list(GBIF=Taxa_Nation,eDNA=Tronko_Taxa))
+    Taxa_GBIF <- as.data.frame(Taxa_Nation)
+    Taxa_GBIF <- na.omit(unique(Taxa_GBIF[,TaxonomicRank]))
+    Taxa_GBIF <- as.data.frame(Taxa_GBIF)
+    colnames(Taxa_GBIF) <- c("Taxa_Nation")
   }
+  
+  #Insert the number of samples and number of samples post-filtering as a return object.
+  SampleDB <- data.frame(matrix(ncol=2,nrow=1))
+  colnames(SampleDB) <- c("totalSamples","filteredSamples")
+  SampleDB$totalSamples <- nrow(Metadata)
+  SampleDB$filteredSamples <- num_filteredSamples
+  datasets <- list(datasets = list(eDNA=Tronko_Taxa[,1],GBIF=Taxa_GBIF[,1],metadata=SampleDB))
   filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,".json",sep="_")
   filename <- gsub("_.json",".json",filename)
   filename <- tolower(filename)
-  write(venn_list,filename)
+  write(toJSON(datasets),filename)
   system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
   system(paste("rm ",filename,sep=""))
 }
