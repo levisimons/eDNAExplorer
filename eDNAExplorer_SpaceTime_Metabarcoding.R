@@ -125,33 +125,6 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   system(paste("rm",TronkoFile,sep=" "))
   system("rm subset*.csv")
 
-  #Filter by relative abundance per taxon per sample.
-  if(nrow(TronkoDB) > 1){
-    TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
-    TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
-      dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
-      dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
-    num_filteredSamples <- length(unique(TronkoDB$SampleID))
-    TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
-    TronkoDB <- as.data.frame(TronkoDB)
-    
-    #Get unique taxa list from Tronko-assign
-    Tronko_Taxa <- na.omit(unique(TronkoDB[,TaxonomicRank]))
-    Tronko_Taxa <- as.data.frame(Tronko_Taxa)
-    colnames(Tronko_Taxa) <- c("eDNA")
-  } else {
-    Tronko_Taxa <- data.frame(matrix(ncol=1,nrow=1))
-    colnames(Tronko_Taxa) <- c("eDNA")
-    Tronko_Taxa$eDNA <- NA
-    num_filteredSamples <- 0
-  }
-
-  #Insert the number of samples and number of samples post-filtering as a return object.
-  SampleDB <- data.frame(matrix(ncol=2,nrow=1))
-  colnames(SampleDB) <- c("totalSamples","filteredSamples")
-  SampleDB$totalSamples <- nrow(Metadata)
-  SampleDB$filteredSamples <- num_filteredSamples
-  
   #Read in Taxonomy output and filter it.
   TaxonomyInput <- tbl(con,"Taxonomy")
   TaxaList <- na.omit(unique(TronkoDB[,TaxonomicRank]))
@@ -185,7 +158,34 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   ProjectDB$quarter <- quarters(as.Date(ProjectDB$sample_date))
   #Get year
   ProjectDB$year <- lubridate::year(ProjectDB$sample_date)
-  
+
+  #Filter by relative abundance per taxon per sample.
+  if(nrow(TronkoDB) > 1){
+    TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
+    TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
+      dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
+      dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
+    num_filteredSamples <- length(unique(TronkoDB$SampleID))
+    TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
+    TronkoDB <- as.data.frame(TronkoDB)
+    
+    #Get unique taxa list from Tronko-assign
+    Tronko_Taxa <- na.omit(unique(TronkoDB[,TaxonomicRank]))
+    Tronko_Taxa <- as.data.frame(Tronko_Taxa)
+    colnames(Tronko_Taxa) <- c("eDNA")
+  } else {
+    Tronko_Taxa <- data.frame(matrix(ncol=1,nrow=1))
+    colnames(Tronko_Taxa) <- c("eDNA")
+    Tronko_Taxa$eDNA <- NA
+    num_filteredSamples <- 0
+  }
+
+  #Insert the number of samples and number of samples post-filtering as a return object.
+  SampleDB <- data.frame(matrix(ncol=2,nrow=1))
+  colnames(SampleDB) <- c("totalSamples","filteredSamples")
+  SampleDB$totalSamples <- nrow(Metadata)
+  SampleDB$filteredSamples <- num_filteredSamples
+           
   #Filter merged data.
   ProjectDB <- dplyr::inner_join(TronkoDB,ProjectDB,multiple="all")
   
