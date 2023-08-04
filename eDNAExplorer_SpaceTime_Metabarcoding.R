@@ -97,11 +97,15 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
   Metadata <- as.data.frame(Metadata)
   Metadata$fastqid <- gsub("_","-",Metadata$fastqid)
   
-  #Read in Tronko output and filter it.
+ #Read in Tronko output and filter it.
   TronkoFile <- paste(Marker,".csv",sep="")
   system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",Project_ID,"/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-  system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset.csv",sep=""))
-  TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+  #Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
+  system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset1.csv",sep=""))
+  #Filter on the number of mismatches.  Remove entries with NA for mismatches and for the selected taxonomic rank.
+  TaxonomicNum <- which(TaxonomicRanks==TaxonomicRank)+1
+  system(paste("awk -F',' 'NR == 1 || ( $10 != \"\" && $",TaxonomicNum," != \"\")' subset1.csv > subset2.csv",sep=""))
+  TronkoInput <- fread(file="subset2.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
   if(TaxonomicRank != "species"){
     TronkoInput <- TronkoInput %>% filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
       group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
@@ -119,7 +123,7 @@ spacetime <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,Taxonom
     if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)),]}
   }
   system(paste("rm",TronkoFile,sep=" "))
-  system("rm subset.csv")
+  system("rm subset*.csv")
   
   #Read in Taxonomy output and filter it.
   TaxonomyInput <- tbl(con,"Taxonomy")
