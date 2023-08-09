@@ -102,7 +102,7 @@ beta <- function(ProjectID,First_Date,Last_Date,Marker,Num_Mismatch,TaxonomicRan
     remaining_Samples <- rownames(Sample)
     
     #Read in Tronko output and filter it.
-    TronkoFile <- paste(Marker,".csv",sep="")
+    TronkoFile <- paste(sample_Primer,".csv",sep="")
     system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",sample_ProjectID,"/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
     system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset.csv",sep=""))
     TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
