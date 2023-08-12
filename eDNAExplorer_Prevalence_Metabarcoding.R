@@ -62,7 +62,8 @@ filename <- paste("Prevalence_Metabarcoding_FirstDate",First_Date,"LastDate",Las
 filename <- paste(filename,".json",sep="")
 filename <- tolower(filename)
 #Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
-write(toJSON(data.frame(error=c("No results found"))),filename)
+#write(toJSON(data.frame(error=c("No results found"))),filename)
+write(toJSON(list(generating = TRUE, lastRanAt = Sys.time())),filename)
 system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
 system(paste("rm ",filename,sep=""))
 
