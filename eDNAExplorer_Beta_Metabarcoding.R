@@ -27,7 +27,8 @@ ProjectID <- args[1]
 process_error <- function(e, filename = "error.json") {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
+  stack_trace <- paste(capture.output(traceback()), collapse = "\n")
+  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message, stack_trace = stack_trace))
   write(json_content, filename)
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
@@ -111,24 +112,6 @@ tryCatch(
 
 tryCatch(
   {
-    #Define filters in Phyloseq as global parameters.
-    sample_ProjectID <<- as.character(ProjectID)
-    sample_First_Date <<- lubridate::ymd(First_Date)
-    sample_Last_Date <<- lubridate::ymd(Last_Date)
-    sample_Primer <<- as.character(Marker)
-    sample_TaxonomicRank <<- as.character(TaxonomicRank)
-    sample_Num_Mismatch <<- as.numeric(Num_Mismatch)
-    sample_CountThreshold <<- as.numeric(CountThreshold)
-    sample_FilterThreshold <<- as.numeric(FilterThreshold)
-    EnvironmentalVariable <<- as.character(EnvironmentalParameter)
-    BetaDiversityMetric <<- as.character(BetaDiversity)
-    SelectedSpeciesList <<- as.character(SpeciesList)
-    
-    CategoricalVariables <- c("grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
-    ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
-    FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
-    TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-    
     #Establish sql connection
     Database_Driver <- dbDriver("PostgreSQL")
     sapply(dbListConnections(Database_Driver), dbDisconnect)
@@ -149,7 +132,7 @@ tryCatch(
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     write(jfig,filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Read in metadata and filter it.
@@ -167,79 +150,75 @@ tryCatch(
     Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date)
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
     
-    if(nrow(Metadata)>0){
-      #Create sample metadata matrix
-      Sample <- Metadata[!is.na(Metadata$fastqid),]
-      rownames(Sample) <- Sample$fastqid
-      Sample$fastqid <- NULL
-      Sample <- sample_data(Sample)
-      remaining_Samples <- rownames(Sample)
+    #Create sample metadata matrix
+    Sample <- Metadata[!is.na(Metadata$fastqid),]
+    rownames(Sample) <- Sample$fastqid
+    Sample$fastqid <- NULL
+    Sample <- sample_data(Sample)
+    remaining_Samples <- rownames(Sample)
+    
+    #Read in Tronko output and filter it.
+    TronkoFile <- paste(sample_Primer,".csv",sep="")
+    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",sample_ProjectID,"/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset.csv",sep=""))
+    TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+    TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
+    if(sample_TaxonomicRank != "species"){
+      TronkoInput <- TronkoInput %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
+        group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
+        select(SampleID,species,sample_TaxonomicRank)
+      TronkoDB <- as.data.frame(TronkoInput)
+      if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
+      if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
+      TronkoDB$species <- NULL
+    } else{
+      TronkoInput <- TronkoInput %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
+        group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
+        select(SampleID,sample_TaxonomicRank)
+      TronkoDB <- as.data.frame(TronkoInput)
+      if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
+      if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
+    }
+    sapply(dbListConnections(Database_Driver), dbDisconnect)
+    system(paste("rm",TronkoFile,sep=" "))
+    system("rm subset.csv")
+    
+    if(nrow(TronkoDB)>1){
+      #Create OTU matrix
+      otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
+      rownames(otumat) <- otumat[,sample_TaxonomicRank]
+      otumat <- otumat[,colnames(otumat) %in% unique(TronkoDB$SampleID)]
+      otumat[sapply(otumat, is.character)] <- lapply(otumat[sapply(otumat, is.character)], as.numeric)
+      OTU <- otu_table(as.matrix(otumat), taxa_are_rows = TRUE)
       
-      #Read in Tronko output and filter it.
-      TronkoFile <- paste(sample_Primer,".csv",sep="")
-      system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",sample_ProjectID,"/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-      system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset.csv",sep=""))
-      TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-      if(sample_TaxonomicRank != "species"){
-        TronkoInput <- TronkoInput %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
-          group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
-          select(SampleID,species,sample_TaxonomicRank)
-        TronkoDB <- as.data.frame(TronkoInput)
-        if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
-        if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
-        TronkoDB$species <- NULL
-      } else{
-        TronkoInput <- TronkoInput %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
-          group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
-          select(SampleID,sample_TaxonomicRank)
-        TronkoDB <- as.data.frame(TronkoInput)
-        if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
-        if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
-      }
-      sapply(dbListConnections(Database_Driver), dbDisconnect)
-      system(paste("rm",TronkoFile,sep=" "))
-      system("rm subset.csv")
+      #Create merged Phyloseq object.
+      physeq <- phyloseq(OTU,Sample)
+      CountFilter <- physeq
       
-      if(nrow(TronkoDB)>1){
-        #Create OTU matrix
-        otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
-        rownames(otumat) <- otumat[,sample_TaxonomicRank]
-        otumat <- otumat[,colnames(otumat) %in% unique(TronkoDB$SampleID)]
-        otumat[sapply(otumat, is.character)] <- lapply(otumat[sapply(otumat, is.character)], as.numeric)
-        OTU <- otu_table(as.matrix(otumat), taxa_are_rows = TRUE)
-        
-        #Create merged Phyloseq object.
-        physeq <- phyloseq(OTU,Sample)
-        CountFilter <- physeq
-        
-        #Filter on read abundance per sample.
-        tmpFilter  = transform_sample_counts(CountFilter, function(x) x / sum(x) )
-        tmpFiltered = filter_taxa(tmpFilter, function(x) sum(x) > sample_FilterThreshold, TRUE)
-        keeptaxa <- taxa_names(tmpFiltered)
-        AbundanceFiltered <- prune_taxa(keeptaxa,CountFilter)
-        
-        #Plot and analyze beta diversity versus an environmental variables.
-        if(nsamples(AbundanceFiltered)>1 & ntaxa(AbundanceFiltered)>1){
-          if(BetaDiversityMetric!="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F)}
-          if(BetaDiversityMetric=="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F,binary=T)}
-          if(sum(!is.nan(BetaDist))>1){
-            ordination = ordinate(AbundanceFiltered, method="PCoA", distance=BetaDist)
-            AbundanceFiltered_df <- data.frame(sample_data(AbundanceFiltered))
-            if(length(unique(AbundanceFiltered_df[,EnvironmentalVariable]))>1){
-              BetaExpression = paste("adonis2(BetaDist ~ sample_data(AbundanceFiltered)$",EnvironmentalVariable,")",sep="")
-              test <- eval(parse(text=BetaExpression))
-              Stat_test <- paste("PCA plot.  Results of PERMANOVA, using 999 permutations.\n",BetaDiversityMetric," beta diversity and ",EnvironmentalVariable,"\nDegrees of freedom: ",round(test$Df[1],3),". Sum of squares: ",round(test$SumOfSqs[1],3),". R-squared: ",round(test$R2[1],3),". F-statistic: ",round(test$F[1],3),". p: ",round(test$`Pr(>F)`[1],3),sep="")
-            } else {
-              Stat_test <- paste("PCA plot.  Not enough variation in ",EnvironmentalVariable," to perform a PERMANOVA on beta diversity.",sep="")
-            }
-            p <- plot_ordination(AbundanceFiltered, ordination, color=EnvironmentalVariable) + theme(aspect.ratio=1) + labs(title = Stat_test, color = EnvironmentalVariable)
-            p <- p+theme_bw()
-          } else{
-            Stat_test <- "PCA plot.  Not enough remaining data after filters to perform a PERMANOVA on beta diversity."
-            p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
+      #Filter on read abundance per sample.
+      tmpFilter  = transform_sample_counts(CountFilter, function(x) x / sum(x) )
+      tmpFiltered = filter_taxa(tmpFilter, function(x) sum(x) > sample_FilterThreshold, TRUE)
+      keeptaxa <- taxa_names(tmpFiltered)
+      AbundanceFiltered <- prune_taxa(keeptaxa,CountFilter)
+      
+      #Plot and analyze beta diversity versus an environmental variables.
+      if(nsamples(AbundanceFiltered)>1 & ntaxa(AbundanceFiltered)>1){
+        if(BetaDiversityMetric!="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F)}
+        if(BetaDiversityMetric=="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F,binary=T)}
+        if(sum(!is.nan(BetaDist))>1){
+          ordination = ordinate(AbundanceFiltered, method="PCoA", distance=BetaDist)
+          AbundanceFiltered_df <- data.frame(sample_data(AbundanceFiltered))
+          if(length(unique(AbundanceFiltered_df[,EnvironmentalVariable]))>1){
+            BetaExpression = paste("adonis2(BetaDist ~ sample_data(AbundanceFiltered)$",EnvironmentalVariable,")",sep="")
+            test <- eval(parse(text=BetaExpression))
+            Stat_test <- paste("PCA plot.  Results of PERMANOVA, using 999 permutations.\n",BetaDiversityMetric," beta diversity and ",EnvironmentalVariable,"\nDegrees of freedom: ",round(test$Df[1],3),". Sum of squares: ",round(test$SumOfSqs[1],3),". R-squared: ",round(test$R2[1],3),". F-statistic: ",round(test$F[1],3),". p: ",round(test$`Pr(>F)`[1],3),sep="")
+          } else {
+            Stat_test <- paste("PCA plot.  Not enough variation in ",EnvironmentalVariable," to perform a PERMANOVA on beta diversity.",sep="")
           }
-        } else {
-          Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
+          p <- plot_ordination(AbundanceFiltered, ordination, color=EnvironmentalVariable) + theme(aspect.ratio=1) + labs(title = Stat_test, color = EnvironmentalVariable)
+          p <- p+theme_bw()
+        } else{
+          Stat_test <- "PCA plot.  Not enough remaining data after filters to perform a PERMANOVA on beta diversity."
           p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
         }
       } else {
@@ -250,6 +229,7 @@ tryCatch(
       Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
       p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
     }
+    
     
     #Insert the number of samples and number of samples post-filtering as a return object.
     SampleDB <- data.frame(matrix(ncol=2,nrow=1))
@@ -263,7 +243,7 @@ tryCatch(
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     write(toJSON(datasets),filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
   },
   error = function(e) {
