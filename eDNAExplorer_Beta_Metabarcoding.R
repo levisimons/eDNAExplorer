@@ -40,6 +40,7 @@ process_error <- function(e, filename = "error.json") {
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
+  system(paste("rm ",filename,sep=""))
   stop(error_message)
 }
 
