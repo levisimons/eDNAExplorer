@@ -164,6 +164,7 @@ tryCatch(
     system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ", TronkoFile, " > subset.csv", sep = ""))
     # Filter on the number of mismatches.  Remove entries with NA for mismatches and for the selected taxonomic rank.
     TronkoInput <- fread(file = "subset.csv", header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
+    TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
     TronkoInput <- TronkoInput %>%
       filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>%
       filter(!is.na(!!sym(TaxonomicRank))) %>%
