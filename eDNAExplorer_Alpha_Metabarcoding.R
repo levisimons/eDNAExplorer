@@ -137,15 +137,15 @@ tryCatch(
     Metadata <- tbl(con, "TronkoMetadata")
     Keep_Vars <- c(CategoricalVariables, ContinuousVariables, FieldVars)[c(CategoricalVariables, ContinuousVariables, FieldVars) %in% dbListFields(con, "TronkoMetadata")]
     # Get the number of samples in a project before filtering.
-    tmp <- Metadata %>% filter(projectid == Project_ID)
+    tmp <- Metadata %>% filter(projectid == sample_ProjectID)
     tmp <- as.data.frame(tmp)
     total_Samples <- nrow(tmp)
     Metadata <- Metadata %>%
-      filter(projectid == Project_ID) %>%
+      filter(projectid == sample_ProjectID) %>%
       filter(!is.na(latitude) & !is.na(longitude))
     Metadata <- as.data.frame(Metadata)
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
-    Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
+    Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date)
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
     
     #Create sample metadata matrix
@@ -160,6 +160,7 @@ tryCatch(
     system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",sample_ProjectID,"/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
     system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset.csv",sep=""))
     TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+    TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
     if(sample_TaxonomicRank != "species"){
       TronkoInput <- TronkoInput %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
         group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
