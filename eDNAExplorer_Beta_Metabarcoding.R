@@ -151,14 +151,20 @@ tryCatch(
     system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
-    #Read in metadata and filter it.
-    Metadata <- tbl(con,"TronkoMetadata")
-    Keep_Vars <- c(CategoricalVariables,ContinuousVariables,FieldVars)[c(CategoricalVariables,ContinuousVariables,FieldVars) %in% dbListFields(con,"TronkoMetadata")]
-    Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date) %>%
-      filter(projectid == sample_ProjectID) %>% filter(!is.na(latitude) & !is.na(longitude)) %>% select(Keep_Vars)
+    # Read in metadata and filter it.
+    Metadata <- tbl(con, "TronkoMetadata")
+    Keep_Vars <- c(CategoricalVariables, ContinuousVariables, FieldVars)[c(CategoricalVariables, ContinuousVariables, FieldVars) %in% dbListFields(con, "TronkoMetadata")]
+    # Get the number of samples in a project before filtering.
+    tmp <- Metadata %>% filter(projectid == sample_ProjectID)
+    tmp <- as.data.frame(tmp)
+    total_Samples <- nrow(tmp)
+    Metadata <- Metadata %>%
+      filter(projectid == sample_ProjectID) %>%
+      filter(!is.na(latitude) & !is.na(longitude))
     Metadata <- as.data.frame(Metadata)
-    Metadata$fastqid <- gsub("_","-",Metadata$fastqid)
-    Metadata <- Metadata[!is.na(Metadata[,EnvironmentalVariable]),]
+    Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
+    Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date)
+    Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
     
     if(nrow(Metadata)>0){
       #Create sample metadata matrix
@@ -169,7 +175,7 @@ tryCatch(
       remaining_Samples <- rownames(Sample)
       
       #Read in Tronko output and filter it.
-      TronkoFile <- paste(Marker,".csv",sep="")
+      TronkoFile <- paste(sample_Primer,".csv",sep="")
       system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",sample_ProjectID,"/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
       system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset.csv",sep=""))
       TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
