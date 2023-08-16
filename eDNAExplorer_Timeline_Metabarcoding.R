@@ -1,5 +1,6 @@
-# plumber.R
-library(plumber)
+#!/usr/bin/env Rscript
+rm(list = ls())
+args <- commandArgs(trailingOnly = TRUE)
 require(aws.s3)
 require(tidyr)
 require(dplyr)
@@ -12,6 +13,30 @@ require(plotly)
 require(jsonlite)
 require(data.table)
 
+# Fetch project ID early so we can use it for error output when possible.
+ProjectID <- args[1]
+
+# Write error output to our json file.
+process_error <- function(e, filename = "error.json") {
+  error_message <- paste("Error:", e$message)
+  cat(error_message, "\n")
+  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
+  write(json_content, filename)
+  
+  timestamp <- as.integer(Sys.time()) # Get Unix timestamp
+  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  
+  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
+    paste("s3://ednaexplorer/errors/timeline/", new_filename, sep = "")
+  } else {
+    paste("s3://ednaexplorer/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+  }
+  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
+  system(paste("rm ",filename,sep=""))
+  sapply(dbListConnections(Database_Driver), dbDisconnect)
+  stop(error_message)
+}
+
 readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
            "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
@@ -21,106 +46,130 @@ db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 
-#* Echo the parameter that was sent in
-#* @param ProjectID:string
-#* @param Marker:string Target marker name
-#* @param Taxon_name:string Scientific taxon name
-#* @param TaxonomicRank:string Taxonomic level to aggregate results to
-#* @param Num_Mismatch:numeric Maximum number of sequence mismatches allowed with Tronko-assign output
-#* @param CountThreshold:numeric Read count threshold for retaining samples
-#* @param FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
-#* @get /timeline
+# Get filtering parameters.
+# ProjectID:string
+# Marker:string Target marker name
+# Num_Mismatch:numeric Maximum number of sequence mismatches allowed with Tronko-assign output
+# TaxonomicRank:string Taxonomic level to aggregate results to
+# CountThreshold:numeric Read count threshold for retaining samples
+# FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
+# Taxon_name:string Scientific taxon name
+# Rscript --vanilla eDNAExplorer_Timeline_Metabarcoding.R "ProjectID" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "Taxon_name"
 
-timeline <- function(ProjectID,Marker,Taxon_name,TaxonomicRank,Num_Mismatch,CountThreshold,FilterThreshold){
-  
-  #Establish sql connection
-  Database_Driver <- dbDriver("PostgreSQL")
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
-  
-  #Select taxon to map.
-  #User input
-  Project_ID <- as.character(ProjectID)
-  Taxon <- Taxon_name
-  #Get GBIF taxonomy key for taxon.
-  Taxon_GBIF <- name_backbone(name=Taxon,rank=TaxonomicRank)$usageKey
-  #Ensure numeric values.
-  Num_Mismatch <- as.numeric(Num_Mismatch)
-  CountThreshold <- as.numeric(CountThreshold)
-  FilterThreshold <- as.numeric(FilterThreshold)
-  
-  #Read in GBIF occurrences.
-  gbif <- gbif_local()
-  
-  #Filter GBIF occurrences to a particular taxon.
-  GBIFDB <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
-                            coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
-                            occurrencestatus=="PRESENT",taxonkey==Taxon_GBIF) %>% select(year)
-  GBIFDB <- as.data.frame(GBIFDB)
-  
-  if(nrow(GBIFDB) < 1){
-    Taxa_Time <- data.frame(matrix(nrow=1,ncol=2))
-    colnames(Taxa_Time) <- c("year","gbif_occurrences")
+tryCatch(
+  {
+    if (length(args) != 7) {
+      stop("Need the following inputs: ProjectID, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, Taxon_name.", call. = FALSE)
+    } else if (length(args) == 7) {
+      ProjectID <- args[1]
+      Marker <- args[2]
+      Num_Mismatch <- args[3]
+      TaxonomicRank <- args[4]
+      CountThreshold <- args[5]
+      FilterThreshold <- args[6]
+      Taxon_name <- args[7]
+    }
+    Project_ID <- as.character(ProjectID)
+    Taxon <- as.character(Taxon_name)
+    #Get GBIF taxonomy key for taxon.
+    Taxon_GBIF <- name_backbone(name=Taxon,rank=TaxonomicRank)$usageKey
+    #Ensure numeric values.
+    Num_Mismatch <- as.numeric(Num_Mismatch)
+    CountThreshold <- as.numeric(CountThreshold)
+    FilterThreshold <- as.numeric(FilterThreshold)
+  },
+  error = function(e) {
+    process_error(e)
   }
-  if(nrow(GBIFDB) >=1){
-    #Get GBIF taxon occurrences over time.
-    Taxa_Time <- as.data.frame(table(GBIFDB))
-    colnames(Taxa_Time) <- c("year","gbif_occurrences") 
-  }
-  Taxa_Time$year <- as.numeric(as.character(Taxa_Time$year))
-  
-  #Read in Tronko output and filter it.
-  TronkoFile <- paste(Marker,".csv",sep="")
-  system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",Project_ID,"/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-  system(paste("cut -d ',' -f 2,6,7,8,9,10,11,12,13,14,16 ",TronkoFile," > subset.csv",sep=""))
-  TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-  if(TaxonomicRank != "species"){
-    TronkoInput <- TronkoInput %>% filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
-      group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
-      select(ProjectID,SampleID,species,TaxonomicRank)
+)
+
+# Generate the output filename for cached plots.
+tryCatch(
+  {
+    #Establish sql connection
+    Database_Driver <- dbDriver("PostgreSQL")
+    sapply(dbListConnections(Database_Driver), dbDisconnect)
+    
+    #Read in GBIF occurrences.
+    gbif <- gbif_local()
+    
+    #Filter GBIF occurrences to a particular taxon.
+    GBIFDB <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
+                              coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
+                              occurrencestatus=="PRESENT",taxonkey==Taxon_GBIF) %>% select(year)
+    GBIFDB <- as.data.frame(GBIFDB)
+    
+    if(nrow(GBIFDB) < 1){
+      Taxa_Time <- data.frame(matrix(nrow=1,ncol=2))
+      colnames(Taxa_Time) <- c("year","gbif_occurrences")
+    }
+    if(nrow(GBIFDB) >=1){
+      #Get GBIF taxon occurrences over time.
+      Taxa_Time <- as.data.frame(table(GBIFDB))
+      colnames(Taxa_Time) <- c("year","gbif_occurrences") 
+    }
+    Taxa_Time$year <- as.numeric(as.character(Taxa_Time$year))
+    
+    # Read in Tronko output and filter it.
+    TronkoFile <- paste(Marker, ".csv", sep = "")
+    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
+    system(paste("cut -d ',' -f 6,7,8,9,10,11,12,13,14,16 ", TronkoFile, " > subset.csv", sep = ""))
+    # Filter on the number of mismatches.  Remove entries with NA for mismatches and for the selected taxonomic rank.
+    TronkoInput <- fread(file = "subset.csv", header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
+    TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
+    TronkoInput <- TronkoInput %>%
+      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>%
+      filter(!is.na(!!sym(TaxonomicRank))) %>%
+      group_by(SampleID) %>%
+      filter(n() > CountThreshold) %>%
+      select(SampleID, kingdom, phylum, class, order, family, genus, species)
     TronkoDB <- as.data.frame(TronkoInput)
-    TronkoDB$species <- NULL
-  } else{
-    TronkoInput <- TronkoInput %>% filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(TaxonomicRank))) %>%
-      group_by(SampleID) %>% filter(n() > CountThreshold) %>% 
-      select(ProjectID,SampleID,TaxonomicRank)
-    TronkoDB <- as.data.frame(TronkoInput)
+    TronkoDB <- TronkoDB[TronkoDB[,TaxonomicRank]==Taxon,]
+    
+    #Get samples where taxon occurs and meets Tronko filters.
+    TaxonDB <- TronkoDB[!duplicated(TronkoDB),]
+    TaxonDB$SampleID <- gsub("-","_",TaxonDB$SampleID)
+    system(paste("rm",TronkoFile,sep=" "))
+    system("rm subset.csv")
+    taxon_samples <- unique(TaxonDB$SampleID)
+    taxon_projects <- ProjectID
+    
+    #Get samples where taxon occurs and meets Tronko filters.
+    taxon_samples <- unique(TaxonDB$SampleID)
+    taxon_projects <- ProjectID
+    
+    #Read in metadata and filter it.
+    con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
+    Metadata <- tbl(con,"TronkoMetadata")
+    Metadata_Filtered <- Metadata %>% filter(!is.na(latitude) & !is.na(longitude)) %>%
+      filter(projectid %in% taxon_projects) %>% filter(fastqid %in% taxon_samples) %>%
+      select(projectid,sample_date)
+    Metadata_Filtered <- as.data.frame(Metadata_Filtered)
+    Metadata_Filtered$year <- lubridate::year(lubridate::ymd(Metadata_Filtered$sample_date))
+    
+    sapply(dbListConnections(Database_Driver), dbDisconnect)
+    
+    #Get projects and years where taxon was detected via eDNA.
+    eDNA <- Metadata_Filtered[,c("year","projectid")]
+    colnames(eDNA) <- c("year","eDNA_projects")
+    eDNA <- eDNA[complete.cases(eDNA),]
+    eDNA <- eDNA[!duplicated(eDNA),]
+    
+    #Merge eDNA and GBIF timeline data.
+    Timeline <- merge(Taxa_Time,eDNA,by="year",all=T)
+    Timeline <- Timeline[rowSums(is.na(Timeline)) != ncol(Timeline), ]
+    
+    #Export file for plotting.
+    Timeline <- toJSON(Timeline)
+    filename <- paste("Timeline_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(FilterThreshold,scientific=F),".json",sep="")
+    filename <- tolower(filename)
+    filename <- gsub(" ","_",filename)
+    write(Timeline,filename)
+    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("rm ",filename,sep=""))
+  },
+  error = function(e) {
+    process_error(e, filename)
   }
-  TaxonDB <- TronkoDB[!duplicated(TronkoDB),]
-  TaxonDB$SampleID <- gsub("-","_",TaxonDB$SampleID)
-  system(paste("rm",TronkoFile,sep=" "))
-  system("rm subset.csv")
-  
-  #Get samples where taxon occurs and meets Tronko filters.
-  taxon_samples <- unique(TaxonDB$SampleID)
-  taxon_projects <- unique(TaxonDB$ProjectID)
-  
-  #Read in metadata and filter it.
-  con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
-  Metadata <- tbl(con,"TronkoMetadata")
-  Metadata_Filtered <- Metadata %>% filter(!is.na(latitude) & !is.na(longitude)) %>%
-    filter(projectid %in% taxon_projects) %>% filter(fastqid %in% taxon_samples) %>%
-    select(projectid,sample_date)
-  Metadata_Filtered <- as.data.frame(Metadata_Filtered)
-  Metadata_Filtered$year <- lubridate::year(lubridate::ymd(Metadata_Filtered$sample_date))
-  
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
-  
-  #Get projects and years where taxon was detected via eDNA.
-  eDNA <- Metadata_Filtered[,c("year","projectid")]
-  colnames(eDNA) <- c("year","eDNA_projects")
-  eDNA <- eDNA[complete.cases(eDNA),]
-  eDNA <- eDNA[!duplicated(eDNA),]
-  
-  #Merge eDNA and GBIF timeline data.
-  Timeline <- merge(Taxa_Time,eDNA,by="year",all=T)
-  Timeline <- Timeline[rowSums(is.na(Timeline)) != ncol(Timeline), ]
-  
-  #Export file for plotting.
-  Timeline <- toJSON(Timeline)
-  filename <- paste("Timeline_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(FilterThreshold,scientific=F),".json",sep="")
-  filename <- tolower(filename)
-  filename <- gsub(" ","_",filename)
-  write(Timeline,filename)
-  system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-  system(paste("rm ",filename,sep=""))
-}
+)
