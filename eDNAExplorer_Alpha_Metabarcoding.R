@@ -97,7 +97,7 @@ tryCatch(
     AlphaDiversityMetric <<- as.character(AlphaDiversity)
     SelectedSpeciesList <<- as.character(SpeciesList)
     
-    CategoricalVariables <- c("grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
+    CategoricalVariables <- c("site,"grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
     ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
     FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
     TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
