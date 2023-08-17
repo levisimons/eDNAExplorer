@@ -78,9 +78,9 @@ tryCatch(
       SpeciesList <- args[9]
       Geographic_Scale <- args[10]
     }
-    CategoricalVariables <- c("site","grtgroup","biome_type","IUCN_CAT","ECO_NAME","HYBAS_ID")
-    ContinuousVariables <- c("bio01","bio12","gHM","elevation","NDVI","Average_Radiance")
-    FieldVars <- c("FastqID","Sample Date","Latitude","Longitude","Spatial Uncertainty")
+    CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_Cat", "eco_name", "hybas_id")
+    ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
+    FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
     TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
     Project_ID <- as.character(ProjectID)
     First_Date <- lubridate::ymd(First_Date)
