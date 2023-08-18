@@ -76,6 +76,7 @@ Metadata$ProjectID <- ProjectID
 
 #Add Fastq ID to make sure metadata and Tronko-assign output lines up.
 Metadata$FastqID <- gsub("R1_001.fastq.gz","",Metadata$`Fastq Forward Reads Filename`)
+Metadata$FastqID <- gsub("_$","",Metadata$FastqID)
 
 #Read in state/province boundaries.
 #Boundaries are from https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/
