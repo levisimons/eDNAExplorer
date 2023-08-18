@@ -133,27 +133,57 @@ tryCatch(
       if(length(TronkoFiles)>0){
         TronkoInputs <- list()
         i=1
-        TronkoHeaders <- c("Readname","Taxonomic_Path","Score","Forward_Mismatch","Reverse_Mismatch","Tree_Number","Node_Number")
+        #TronkoHeaders <- c("Readname","Taxonomic_Path","Score","Forward_Mismatch","Reverse_Mismatch","Tree_Number","Node_Number")
         for(TronkoFile in TronkoFiles){
           TronkoInput <- system(paste("aws s3 cp s3://ednaexplorer/",TronkoFile," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
           if(length(TronkoInput)>0){
             TronkoInput <- read.table(text = paste(TronkoInput,sep = "\t"),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
             if(nrow(TronkoInput)>0){
               print(paste(Primer,i,length(TronkoFiles)))
-              if(identical(colnames(TronkoInput),TronkoHeaders)==FALSE){
-                header_row <- as.data.frame(t(colnames(TronkoInput)))
-                colnames(header_row) <- TronkoHeaders
-                colnames(TronkoInput) <- TronkoHeaders
-              }
-              TronkoInput$SampleID <- gsub(".*[_]([^.]+)[.].*", "\\1", basename(TronkoFile))
+              #if(identical(colnames(TronkoInput),TronkoHeaders)==FALSE){
+              #  header_row <- as.data.frame(t(colnames(TronkoInput)))
+              #  colnames(header_row) <- TronkoHeaders
+              #  colnames(TronkoInput) <- TronkoHeaders
+              #}
+              #TronkoInput$SampleID <- gsub(".*[_]([^.]+)[.].*", "\\1", basename(TronkoFile))
               TronkoInputs[[i]] <- TronkoInput
               i=i+1
             }
           }
         }
         TronkoInputs <- rbindlist(TronkoInputs, use.names=TRUE, fill=TRUE)
+        #Get ASV to sampleID information
+        TronkoASVs <- unique(TronkoBucket$Filename)
+        TronkoASVs <- TronkoASVs[grepl(paste("projects",ProjectID,"assign",Primer,sep="/"),TronkoASVs)]
+        TronkoASVs <- TronkoASVs[grepl("*.asv$",TronkoASVs)]
+        TronkoASVs <- TronkoASVs[!grepl("*-paired_R.asv$",TronkoASVs)]
+        if(length(TronkoASVs)>0){
+          ASVInputs <- list()
+          m=1
+          for(TronkoASV in TronkoASVs){
+            ASVInput <- system(paste("aws s3 cp s3://ednaexplorer/",TronkoASV," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+            if(length(ASVInput)>0){
+              ASVInput <- read.table(text = paste(ASVInput,sep = "\t"),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
+              if(nrow(ASVInput)>0){
+                print(paste(Primer,j,length(TronkoASVs)))
+                #TronkoInput$SampleID <- gsub(".*[_]([^.]+)[.].*", "\\1", basename(TronkoFile))
+                ASVInputs[[m]] <- ASVInput
+                m=m+1
+              }
+            }
+          }
+        }
+        ASVInputs <- rbindlist(ASVInputs, use.names=TRUE, fill=TRUE)
+        colnames(ASVInputs) <- gsub(paste(Primer,"_",sep=""),"",colnames(ASVInputs))
+        ASVtoSample <- ASVInputs
+        ASVtoSample$sequence <- NULL
+        ASVtoSample <- ASVtoSample %>%
+          pivot_longer(cols = -seq_number, names_to = "SampleID", values_to = "observations") %>%
+          filter(observations > 0)
+        ASVtoSample$observations <- NULL
+        TronkoWithASVs <- dplyr::left_join(TronkoInputs,ASVtoSample,by=c("Readname"="seq_number"),multiple="all")
         
-        TronkoDB <- as.data.frame(TronkoInputs)
+        TronkoDB <- as.data.frame(TronkoWithASVs)
         #Remove reads with non-assigned scores.
         TronkoDB$Score <- as.numeric(TronkoDB$Score)
         TronkoDB <- TronkoDB[!is.na(TronkoDB$Score),]
