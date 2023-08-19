@@ -278,8 +278,11 @@ tryCatch(
         tmp$gw_TOS <- (4*tmp$TOS_Local+2*tmp$TOS_State+1*tmp$TOS_Nation)/7
         print(paste(Primer,"TOS scores added"))
         
+        #Remove rows without known family, genus, species data.
+        tmp <- tmp[!is.na(tmp$family) & !is.na(tmp$genus) & !is.na(tmp$species),]
+        
         #Merge in TOS results.
-        TronkoDB <- dplyr::left_join(TronkoDB,tmp,by=c("family","genus","species"))
+        TronkoDB <- dplyr::left_join(TronkoDB,tmp,by=c("family","genus","species"),na_matches = "never")
         
         TronkoDB$Primer <- Primer
         TronkoDB$ProjectID <- ProjectID
@@ -330,21 +333,31 @@ tryCatch(
             #Resolve taxon name/rank mismatches.
             if("rank" %in% colnames(tmp)){
               if(tolower(tmp$rank)!=GBIF_Key$rank & GBIF_Key$rank!="superkingdom"){
-                rank_check <- name_lookup(GBIF_Key$Taxon,GBIF_Key$rank)
-                rank_check <- as.data.frame(rank_check$data)
-                #Resolve missing taxon key for relevant taxonomic rank.
-                GBIF_Key[,paste(GBIF_Key$rank,"Key",sep="")] <- as.numeric(names(sort(-table(rank_check[!is.na(rank_check$acceptedKey),"acceptedKey"])))[1])
+                GBIF_Key$rank <- tolower(tmp$rank)
+                GBIF_Key[,tolower(tmp$rank)] <- as.character(tmp[,tolower(tmp$rank)])
+                GBIF_Key[,paste(tolower(tmp$rank),"Key",sep="")] <- as.numeric(tmp[,paste(tolower(tmp$rank),"Key",sep="")])
+                
+                #rank_check <- name_lookup(GBIF_Key$Taxon,GBIF_Key$rank)
+                #rank_check <- as.data.frame(rank_check$data)
+                #if(nrow(rank_check)!=0 | !is.null(nrow(rank_check))){
+                #  #Resolve missing taxon key for relevant taxonomic rank.
+                #  GBIF_Key[,paste(GBIF_Key$rank,"Key",sep="")] <- as.numeric(names(sort(-table(rank_check[!is.na(rank_check$acceptedKey),"acceptedKey"])))[1])
+                #}
               }
             }
-            GBIF_Key <- cbind(GBIF_Key,as.data.frame(tmp[,colnames(tmp) %in% TaxonomicKeyRanks]))
+            if(nrow(as.data.frame(tmp[,colnames(tmp) %in% TaxonomicKeyRanks & !(colnames(tmp) %in% colnames(GBIF_Key))]))>0){
+              GBIF_Key <- cbind(GBIF_Key,as.data.frame(tmp[,colnames(tmp) %in% TaxonomicKeyRanks & !(colnames(tmp) %in% colnames(GBIF_Key))]))
+            }
+            
             #Get GBIF backbone for querying Phylopic images
             match_ranks <- GBIF_Key[,colnames(GBIF_Key)[colnames(GBIF_Key) %in% TaxonomicKeyRanks]]
-            match_ranks <- match_ranks[,colSums(is.na(match_ranks))<nrow(match_ranks)]
-            match_ranks <- colnames(match_ranks)
+            if(!is.null(dim(match_ranks))){
+              match_ranks <- match_ranks[,colSums(is.na(match_ranks))<nrow(match_ranks)]
+              match_ranks <- colnames(match_ranks)
+            }
             if(length(match_ranks)>0){
               match_ranks <- match_ranks[order(match(match_ranks,TaxonomicKeyRanks[length(TaxonomicKeyRanks):1]))]
               Taxon_Backbone <- as.numeric(GBIF_Key[,match_ranks[length(match_ranks):1]])
-              
               #Get Phylopic images for each taxon
               res <- httr::GET(url=paste("https://api.phylopic.org/resolve/gbif.org/species?embed_primaryImage=true&objectIDs=",paste(Taxon_Backbone,collapse=","),sep=""),config = httr::config(connecttimeout = 100))
               Sys.sleep(0.5)
@@ -353,7 +366,7 @@ tryCatch(
               if(is.null(Taxon_Image)){
                 Taxon_Image <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
               }
-              print(paste(n,Taxon_Image))
+              print(paste(n,GBIF_Key$rank,GBIF_Key$Taxon,Taxon_Image))
               #Get common names if available
               if(length(na.omit(Taxon_Backbone))==0){Common_Name <- NA}
               if(length(na.omit(Taxon_Backbone))>0){
@@ -361,7 +374,12 @@ tryCatch(
                 Common_Name <- as.data.frame(name_usage(key=Taxon_Key,rank=tolower(tmp[1,"rank"]), data="vernacularNames",curlopts=list(http_version=2))$data)
                 if(nrow(Common_Name)>0){
                   Common_Name <- Common_Name[Common_Name$language=="eng","vernacularName"]
-                  Common_Name <- names(sort(-table(Common_Name)))[1]
+                  if(length(Common_Name)>0){
+                    Common_Name <- names(sort(-table(Common_Name)))[1]
+                    Common_Name <- gsub("[[:punct:]]", " ", Common_Name)
+                  } else {
+                    Common_Name <- NA
+                  }
                 } else {
                   Common_Name <- NA
                 }
@@ -379,7 +397,7 @@ tryCatch(
           GBIF_Keys <- rbindlist(GBIF_Keys, use.names=TRUE, fill=TRUE)
           GBIF_Keys <- as.data.frame(GBIF_Keys)
           #Create unique ID for the Phylopic database.
-          GBIF_Keys$UniqueID <- sapply(paste(GBIF_Keys$Taxon,GBIF_Keys$rank),digest,algo="md5")
+          GBIF_Keys$UniqueID <- sapply(apply(GBIF_Keys, 1, function(row) paste(row, collapse = "")),digest,algo="md5")
           
           #Check for redundant data.
           #Add new Phylopic data.
