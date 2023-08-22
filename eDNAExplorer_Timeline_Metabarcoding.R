@@ -45,6 +45,7 @@ db_port <- Sys.getenv("db_port")
 db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
+gbif_dir <- Sys.getenv("GBIF_HOME")
 
 # Get filtering parameters.
 # ProjectID:string
@@ -91,7 +92,7 @@ tryCatch(
     sapply(dbListConnections(Database_Driver), dbDisconnect)
     
     #Read in GBIF occurrences.
-    gbif <- gbif_local()
+    gbif <- gbif_local(dir=gbif_dir)
     
     #Filter GBIF occurrences to a particular taxon.
     GBIFDB <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
