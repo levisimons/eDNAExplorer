@@ -50,6 +50,7 @@ db_port <- Sys.getenv("db_port")
 db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
+gbif_dir <- Sys.getenv("GBIF_HOME")
 Database_Driver <- dbDriver("PostgreSQL")
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
@@ -82,7 +83,7 @@ tryCatch(
     state_province_list <- na.omit(unique(Metadata$state))
     
     #Read in GBIF occurrences.
-    gbif <- gbif_local()
+    gbif <- gbif_local(dir=gbif_dir)
     
     #Get local bounds for sample locations, add 0.5 degree buffer.
     Local_East <- max(na.omit(Metadata$longitude))+0.5
