@@ -83,7 +83,7 @@ tryCatch(
     state_province_list <- na.omit(unique(Metadata$state))
     
     #Read in GBIF occurrences.
-    gbif <- gbif_local(dir=gbif_dir)
+    gbif <- gbif_local()
     
     #Get local bounds for sample locations, add 0.5 degree buffer.
     Local_East <- max(na.omit(Metadata$longitude))+0.5
