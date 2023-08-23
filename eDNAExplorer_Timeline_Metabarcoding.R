@@ -92,7 +92,7 @@ tryCatch(
     sapply(dbListConnections(Database_Driver), dbDisconnect)
     
     #Read in GBIF occurrences.
-    gbif <- gbif_local(dir=gbif_dir)
+    gbif <- gbif_local()
     
     #Filter GBIF occurrences to a particular taxon.
     GBIFDB <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
