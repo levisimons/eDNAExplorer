@@ -136,15 +136,15 @@ tryCatch(
         i=1
         #TronkoHeaders <- c("Readname","Taxonomic_Path","Score","Forward_Mismatch","Reverse_Mismatch","Tree_Number","Node_Number")
         for(TronkoFile in TronkoFiles){
-          system(paste("aws s3 cp s3://ednaexplorer/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-          TronkoInput <- fread(file=TronkoFile,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+          system(paste("aws s3 cp s3://ednaexplorer/",TronkoFile," ",basename(TronkoFile)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+          TronkoInput <- fread(file=basename(TronkoFile),header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
           if(nrow(TronkoInput)>0){
             TronkoInput <- as.data.frame(TronkoInput)
             print(paste(Primer,i,length(TronkoFiles)))
             TronkoInputs[[i]] <- TronkoInput
             i=i+1
           }
-          system(paste("rm ",TronkoFile,sep=""))
+          system(paste("rm ",basename(TronkoFile),sep=""))
         }
         TronkoInputs <- rbindlist(TronkoInputs, use.names=TRUE, fill=TRUE)
         #Get ASV to sampleID information
@@ -156,21 +156,21 @@ tryCatch(
           ASVInputs <- list()
           m=1
           for(TronkoASV in TronkoASVs){
-            system(paste("aws s3 cp s3://ednaexplorer/",TronkoASV," ",TronkoASV," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-            ASVInput <- fread(file=TronkoASV,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+            system(paste("aws s3 cp s3://ednaexplorer/",TronkoASV," ",basename(TronkoASV)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+            ASVInput <- fread(file=basename(TronkoASV),header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
             if(nrow(ASVInput)>0){
               print(paste(Primer,j,length(TronkoASVs)))
               #TronkoInput$SampleID <- gsub(".*[_]([^.]+)[.].*", "\\1", basename(TronkoFile))
               ASVInputs[[m]] <- ASVInput
               m=m+1
             }
-            system(paste("rm ",TronkoASV))
+            system(paste("rm ",basename(TronkoASV)))
           }
         }
         ASVInputs <- rbindlist(ASVInputs, use.names=TRUE, fill=TRUE)
         colnames(ASVInputs) <- gsub(paste(Primer,"_",sep=""),"",colnames(ASVInputs))
         ASVtoSample <- ASVInputs
-        ASVtoSample$sequence <- NULL
+        if("sequence" %in% colnames(ASVInputs)){ASVtoSample$sequence <- NULL}
         ASVtoSample <- ASVtoSample %>%
           pivot_longer(cols = -seq_number, names_to = "SampleID", values_to = "observations") %>%
           filter(observations > 0)
