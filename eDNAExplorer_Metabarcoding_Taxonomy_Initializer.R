@@ -170,7 +170,7 @@ tryCatch(
         ASVInputs <- rbindlist(ASVInputs, use.names=TRUE, fill=TRUE)
         colnames(ASVInputs) <- gsub(paste(Primer,"_",sep=""),"",colnames(ASVInputs))
         ASVtoSample <- ASVInputs
-        if("sequence" %in% colnames(ASVInputs)){ASVtoSample$sequence <- NULL}
+        if("sequence" %in% colnames(ASVtoSample)){ASVtoSample$sequence <- NULL}
         ASVtoSample <- ASVtoSample %>%
           pivot_longer(cols = -seq_number, names_to = "SampleID", values_to = "observations") %>%
           filter(observations > 0)
