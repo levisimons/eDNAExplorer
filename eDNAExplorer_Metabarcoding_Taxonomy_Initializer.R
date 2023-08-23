@@ -136,21 +136,15 @@ tryCatch(
         i=1
         #TronkoHeaders <- c("Readname","Taxonomic_Path","Score","Forward_Mismatch","Reverse_Mismatch","Tree_Number","Node_Number")
         for(TronkoFile in TronkoFiles){
-          TronkoInput <- system(paste("aws s3 cp s3://ednaexplorer/",TronkoFile," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-          if(length(TronkoInput)>0){
-            TronkoInput <- read.table(text = paste(TronkoInput,sep = "\t"),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
-            if(nrow(TronkoInput)>0){
-              print(paste(Primer,i,length(TronkoFiles)))
-              #if(identical(colnames(TronkoInput),TronkoHeaders)==FALSE){
-              #  header_row <- as.data.frame(t(colnames(TronkoInput)))
-              #  colnames(header_row) <- TronkoHeaders
-              #  colnames(TronkoInput) <- TronkoHeaders
-              #}
-              #TronkoInput$SampleID <- gsub(".*[_]([^.]+)[.].*", "\\1", basename(TronkoFile))
-              TronkoInputs[[i]] <- TronkoInput
-              i=i+1
-            }
+          system(paste("aws s3 cp s3://ednaexplorer/",TronkoFile," ",TronkoFile," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+          TronkoInput <- fread(file=TronkoFile,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+          if(nrow(TronkoInput)>0){
+            TronkoInput <- as.data.frame(TronkoInput)
+            print(paste(Primer,i,length(TronkoFiles)))
+            TronkoInputs[[i]] <- TronkoInput
+            i=i+1
           }
+          system(paste("rm ",TronkoFile,sep=""))
         }
         TronkoInputs <- rbindlist(TronkoInputs, use.names=TRUE, fill=TRUE)
         #Get ASV to sampleID information
@@ -162,16 +156,15 @@ tryCatch(
           ASVInputs <- list()
           m=1
           for(TronkoASV in TronkoASVs){
-            ASVInput <- system(paste("aws s3 cp s3://ednaexplorer/",TronkoASV," - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-            if(length(ASVInput)>0){
-              ASVInput <- read.table(text = paste(ASVInput,sep = "\t"),header=TRUE, sep="\t",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8")
-              if(nrow(ASVInput)>0){
-                print(paste(Primer,j,length(TronkoASVs)))
-                #TronkoInput$SampleID <- gsub(".*[_]([^.]+)[.].*", "\\1", basename(TronkoFile))
-                ASVInputs[[m]] <- ASVInput
-                m=m+1
-              }
+            system(paste("aws s3 cp s3://ednaexplorer/",TronkoASV," ",TronkoASV," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+            ASVInput <- fread(file=TronkoASV,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+            if(nrow(ASVInput)>0){
+              print(paste(Primer,j,length(TronkoASVs)))
+              #TronkoInput$SampleID <- gsub(".*[_]([^.]+)[.].*", "\\1", basename(TronkoFile))
+              ASVInputs[[m]] <- ASVInput
+              m=m+1
             }
+            system(paste("rm ",TronkoASV))
           }
         }
         ASVInputs <- rbindlist(ASVInputs, use.names=TRUE, fill=TRUE)
