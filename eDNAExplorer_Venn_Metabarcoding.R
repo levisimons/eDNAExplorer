@@ -174,7 +174,7 @@ tryCatch(
     }
     
     #Read in GBIF occurrences.
-    gbif <- gbif_local(dir=gbif_dir)
+    gbif <- gbif_local()
     
     #Get unique states and nations in project.
     country_list <- na.omit(unique(Metadata$nation))
