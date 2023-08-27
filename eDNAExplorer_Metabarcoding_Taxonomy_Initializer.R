@@ -31,10 +31,10 @@ process_error <- function(e, filename = "error.json") {
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   
-  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://ednaexplorer/errors/taxonomy/", new_filename, sep = "")
+  if(is.null(ProjectID) || ProjectID == "") {
+    s3_path <- paste("s3://ednaexplorer/errors/taxonomy/", new_filename, sep = "")
   } else {
-    paste("s3://ednaexplorer/tronko_output/", ProjectID, "/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    s3_path <- paste("s3://ednaexplorer/tronko_output/", ProjectID, "/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -51,6 +51,7 @@ db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 gbif_dir <- Sys.getenv("GBIF_HOME")
+taxonomy_home <- Sys.getenv("taxonomy_home")
 Database_Driver <- dbDriver("PostgreSQL")
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
@@ -137,7 +138,7 @@ tryCatch(
         #TronkoHeaders <- c("Readname","Taxonomic_Path","Score","Forward_Mismatch","Reverse_Mismatch","Tree_Number","Node_Number")
         for(TronkoFile in TronkoFiles){
           system(paste("aws s3 cp s3://ednaexplorer/",TronkoFile," ",basename(TronkoFile)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-          TronkoInput <- fread(file=basename(TronkoFile),header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+          TronkoInput <- fread(file=basename(TronkoFile),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
           if(nrow(TronkoInput)>0){
             TronkoInput <- as.data.frame(TronkoInput)
             print(paste(Primer,i,length(TronkoFiles)))
@@ -157,24 +158,43 @@ tryCatch(
           m=1
           for(TronkoASV in TronkoASVs){
             system(paste("aws s3 cp s3://ednaexplorer/",TronkoASV," ",basename(TronkoASV)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-            ASVInput <- fread(file=basename(TronkoASV),header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+            ASVInput <- fread(file=basename(TronkoASV),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
             if(nrow(ASVInput)>0){
               print(paste(Primer,j,length(TronkoASVs)))
-              #TronkoInput$SampleID <- gsub(".*[_]([^.]+)[.].*", "\\1", basename(TronkoFile))
+              ASVInput <- as.data.frame(ASVInput)
               ASVInputs[[m]] <- ASVInput
               m=m+1
             }
-            system(paste("rm ",basename(TronkoASV)))
+            system(paste("rm ",basename(TronkoASV),sep=""))
           }
         }
         ASVInputs <- rbindlist(ASVInputs, use.names=TRUE, fill=TRUE)
         colnames(ASVInputs) <- gsub(paste(Primer,"_",sep=""),"",colnames(ASVInputs))
-        ASVtoSample <- ASVInputs
-        if("sequence" %in% colnames(ASVtoSample)){ASVtoSample$sequence <- NULL}
-        ASVtoSample <- ASVtoSample %>%
-          pivot_longer(cols = -seq_number, names_to = "SampleID", values_to = "observations") %>%
-          filter(observations > 0)
-        ASVtoSample$observations <- NULL
+        
+        max_rows_per_split <- 1000
+        asv_table_filename <- paste(ProjectID,Primer,"asv_table.txt",sep="_")
+        # Calculate the number of splits needed
+        num_splits <- ceiling(nrow(ASVInputs) / max_rows_per_split)
+        # Create an empty list to store the splits
+        split_list <- list()
+        # Split the data frame and store in the list
+        for (p in 1:num_splits) {
+          start_row <- (p - 1) * max_rows_per_split + 1
+          end_row <- min(p * max_rows_per_split, nrow(ASVInputs))
+          asv_subset <- ASVInputs[start_row:end_row,!c("sequence")]
+          asv_subset <- asv_subset %>%
+            pivot_longer(cols = -seq_number, names_to = "SampleID", values_to = "observations") %>%
+            filter(observations > 0) %>% select("seq_number","SampleID")
+          if (p==1) {
+            write.table(asv_subset, asv_table_filename, sep = "\t", col.names = TRUE, row.names = FALSE)
+          } else {
+            write.table(asv_subset, asv_table_filename, sep = "\t", col.names = FALSE, row.names = FALSE, append = TRUE)
+          }
+          print(paste(p,num_splits))
+        }
+        
+        ASVtoSample <- fread(file=asv_table_filename,header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+        system(paste("rm ",asv_table_filename,sep=""))
         TronkoWithASVs <- dplyr::left_join(TronkoInputs,ASVtoSample,by=c("Readname"="seq_number"),multiple="all")
         
         TronkoDB <- as.data.frame(TronkoWithASVs)
@@ -210,13 +230,13 @@ tryCatch(
         Phylum_to_Kingdom <- list()
         k=1
         for(phylum in na.omit(unique(TronkoDB$phylum))){
-          Taxon_GBIF <- name_backbone(phylum,verbose=T,strict=F,curlopts=list(http_version=2))
+          Taxon_GBIF <- name_backbone(phylum,verbose=T,strict=F,curlopts=list(http_version=2,timeout_ms=5000))
           print(paste(Primer,k,phylum))
           Taxon_GBIF <- Taxon_GBIF[Taxon_GBIF$matchType!="NONE",]
           if(!("kingdom" %in% colnames(Taxon_GBIF))){
             test_class <- names(sort(table(TronkoDB[TronkoDB$phylum==phylum,"class"]),decreasing=TRUE)[1])
             if(!is.null(test_class)){
-              Taxon_GBIF <- name_backbone(test_class,verbose=T,strict=F,curlopts=list(http_version=2))
+              Taxon_GBIF <- name_backbone(test_class,verbose=T,strict=F,curlopts=list(http_version=2,timeout_ms=5000))
               Taxon_GBIF <- Taxon_GBIF[Taxon_GBIF$matchType!="NONE",]
             }
           }
@@ -301,7 +321,7 @@ tryCatch(
         TaxaDB$Taxon <- TaxaDB[cbind(1:nrow(TaxaDB), max.col(!is.na(TaxaDB), ties.method = 'last'))]
         TaxaDB$rank <- TaxonomicRanks[max.col(!is.na(TaxaDB[TaxonomicRanks]), ties.method="last")]
         #Create unique ID for the Phylopic database.
-        TaxaDB$UniqueID <- sapply(paste(TaxaDB$Taxon,TaxaDB$rank),digest,algo="md5")
+        TaxaDB$UniqueID <- sapply(paste(TaxaDB$species,TaxaDB$genus,TaxaDB$family,TaxaDB$order,TaxaDB$class,TaxaDB$phylum,TaxaDB$kingdom,TaxaDB$Taxon,TaxaDB$rank),digest,algo="md5")
         
         #Check for pre-existing Phylopic database entries.  Only leave new and unique entries to append.
         if(dbExistsTable(con,"Taxonomy")==TRUE){
@@ -319,34 +339,34 @@ tryCatch(
         #Get Phylopic urls and common names for each unique taxon to append to database.
         if(nrow(TaxaDB)>0){
           GBIF_Keys <- c()
+          GBIF_Backbone <- read.table(file=paste(taxonomy_home,"gbif_backbone.tsv",sep="/"),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"",as.is=TRUE, encoding = "UTF-8",na = c("", "NA", "N/A"))
           for(n in 1:nrow(TaxaDB)){
             GBIF_Key <- TaxaDB[n,]
-            tmp <- name_backbone(name=GBIF_Key$Taxon,rank=GBIF_Key$rank,genus=GBIF_Key$genus,
-                                 family=GBIF_Key$family,order=GBIF_Key$order,
-                                 class=GBIF_Key$class,phylum=GBIF_Key$phylum,kingdom=GBIF_Key$kingdom,curlopts=list(http_version=2))
-            #Resolve taxon name/rank mismatches.
-            if("rank" %in% colnames(tmp)){
-              if(tolower(tmp$rank)!=GBIF_Key$rank & GBIF_Key$rank!="superkingdom"){
-                GBIF_Key$rank <- tolower(tmp$rank)
-                GBIF_Key[,tolower(tmp$rank)] <- as.character(tmp[,tolower(tmp$rank)])
-                GBIF_Key[,paste(tolower(tmp$rank),"Key",sep="")] <- as.numeric(tmp[,paste(tolower(tmp$rank),"Key",sep="")])
-                
-                #rank_check <- name_lookup(GBIF_Key$Taxon,GBIF_Key$rank)
-                #rank_check <- as.data.frame(rank_check$data)
-                #if(nrow(rank_check)!=0 | !is.null(nrow(rank_check))){
-                #  #Resolve missing taxon key for relevant taxonomic rank.
-                #  GBIF_Key[,paste(GBIF_Key$rank,"Key",sep="")] <- as.numeric(names(sort(-table(rank_check[!is.na(rank_check$acceptedKey),"acceptedKey"])))[1])
-                #}
+            GBIF_Key_ranks <- c("kingdom","phylum","class","order","family","genus","species")[!is.na(GBIF_Key[,c("kingdom","phylum","class","order","family","genus","species")])]
+            for(TaxonomicRank in GBIF_Key_ranks){
+              tmp <- GBIF_Backbone[GBIF_Backbone[,TaxonomicRank]==GBIF_Key[,TaxonomicRank] & !is.na(GBIF_Backbone[,TaxonomicRank]) & GBIF_Backbone$rank==TaxonomicRank & GBIF_Backbone[,TaxonomicRank]==GBIF_Backbone$canonicalName,paste(TaxonomicRank,"Key",sep="")]
+              GBIF_Key[,paste(TaxonomicRank,"Key",sep="")] <- tmp[1] 
+              #print(paste(TaxonomicRank,GBIF_Key[,TaxonomicRank],tmp))
+            }
+            if(GBIF_Key$rank!="superkingdom"){
+              remaining_key_ranks <- paste(GBIF_Key_ranks, "Key", sep = "")
+              terminal_key_rank <- remaining_key_ranks[max.col(!is.na(GBIF_Key[remaining_key_ranks]), ties.method="last")]
+              terminal_taxonID <- GBIF_Key[,terminal_key_rank]
+              if(!is.na(terminal_taxonID)){
+                GBIF_Key[,"Common_Name"] <- GBIF_Backbone[GBIF_Backbone$taxonID==terminal_taxonID,"Common_Name"]
+              }
+              if(is.na(terminal_taxonID)){
+                GBIF_Key[,"Common_Name"] <- NA
               }
             }
-            if(nrow(as.data.frame(tmp[,colnames(tmp) %in% TaxonomicKeyRanks & !(colnames(tmp) %in% colnames(GBIF_Key))]))>0){
-              GBIF_Key <- cbind(GBIF_Key,as.data.frame(tmp[,colnames(tmp) %in% TaxonomicKeyRanks & !(colnames(tmp) %in% colnames(GBIF_Key))]))
+            if(GBIF_Key$rank=="superkingdom"){
+              GBIF_Key[,"Common_Name"] <- NA
             }
             
             #Get GBIF backbone for querying Phylopic images
-            match_ranks <- GBIF_Key[,colnames(GBIF_Key)[colnames(GBIF_Key) %in% TaxonomicKeyRanks]]
+            match_ranks <- GBIF_Key[,c(colnames(GBIF_Key)[colnames(GBIF_Key) %in% TaxonomicKeyRanks]),drop=F]
             if(!is.null(dim(match_ranks))){
-              match_ranks <- match_ranks[,colSums(is.na(match_ranks))<nrow(match_ranks)]
+              match_ranks <- match_ranks[,colSums(is.na(match_ranks))<nrow(match_ranks),drop=F]
               match_ranks <- colnames(match_ranks)
             }
             if(length(match_ranks)>0){
@@ -361,37 +381,20 @@ tryCatch(
                 Taxon_Image <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
               }
               print(paste(n,GBIF_Key$rank,GBIF_Key$Taxon,Taxon_Image))
-              #Get common names if available
-              if(length(na.omit(Taxon_Backbone))==0){Common_Name <- NA}
-              if(length(na.omit(Taxon_Backbone))>0){
-                Taxon_Key <- GBIF_Key[1,paste(tolower(tmp[1,"rank"]),"Key",sep="")]
-                Common_Name <- as.data.frame(name_usage(key=Taxon_Key,rank=tolower(tmp[1,"rank"]), data="vernacularNames",curlopts=list(http_version=2))$data)
-                if(nrow(Common_Name)>0){
-                  Common_Name <- Common_Name[Common_Name$language=="eng","vernacularName"]
-                  if(length(Common_Name)>0){
-                    Common_Name <- names(sort(-table(Common_Name)))[1]
-                    Common_Name <- gsub("[[:punct:]]", " ", Common_Name)
-                  } else {
-                    Common_Name <- NA
-                  }
-                } else {
-                  Common_Name <- NA
-                }
-              }
-              GBIF_Key$Common_Name <- Common_Name
               GBIF_Key$Image_URL <- Taxon_Image
             }
             if(length(match_ranks)==0){
               GBIF_Key$Common_Name <- NA
               GBIF_Key$Image_URL <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
             }
+            
             GBIF_Keys[[n]] <- GBIF_Key
           }
-          
           GBIF_Keys <- rbindlist(GBIF_Keys, use.names=TRUE, fill=TRUE)
           GBIF_Keys <- as.data.frame(GBIF_Keys)
+          
           #Create unique ID for the Phylopic database.
-          GBIF_Keys$UniqueID <- sapply(apply(GBIF_Keys, 1, function(row) paste(row, collapse = "")),digest,algo="md5")
+          GBIF_Keys$UniqueID <- sapply(paste(GBIF_Keys$species,GBIF_Keys$genus,GBIF_Keys$family,GBIF_Keys$order,GBIF_Keys$class,GBIF_Keys$phylum,GBIF_Keys$kingdom,GBIF_Keys$Taxon,GBIF_Keys$rank),digest,algo="md5")
           
           #Check for redundant data.
           #Add new Phylopic data.
@@ -407,7 +410,7 @@ tryCatch(
           if(dbExistsTable(con,"Taxonomy")==FALSE){
             dbWriteTable(con,"Taxonomy",GBIF_Keys,row.names=FALSE,append=TRUE)
           } 
-        } 
+        }
       }
     }
     #Get the number of unique organisms per sample per project.
@@ -419,7 +422,7 @@ tryCatch(
     system(paste("aws s3 cp ",TaxaCount_Filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",TaxaCount_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
     system(paste("rm ",TaxaCount_Filename,sep=""))
     RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
-  },
+    },
   error = function(e) {
     process_error(e, filename)
   }
