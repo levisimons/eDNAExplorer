@@ -1,2 +1,2 @@
-install.packages(c("aws.s3", "tidyr", "dplyr", "vegan", "ggplot2", "lubridate", "htmlwidgets", "plotly", "jsonlite", "BiocManager", "plumber"))
+install.packages(c("aws.s3", "tidyr", "dplyr", "vegan", "ggplot2", "lubridate", "htmlwidgets", "plotly", "jsonlite", "BiocManager", "plumber","ggVennDiagram"))
 BiocManager::install("phyloseq")
