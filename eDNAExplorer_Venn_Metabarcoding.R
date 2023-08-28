@@ -15,7 +15,6 @@ require(data.table)
 require(DBI)
 require(RPostgreSQL)
 require(digest)
-require(aws.s3)
 
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
