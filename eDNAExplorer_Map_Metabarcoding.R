@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 rm(list = ls())
 args <- commandArgs(trailingOnly = TRUE)
-require(aws.s3)
+#require(aws.s3)
 require(tidyr)
 require(dplyr)
 require(ggplot2)
