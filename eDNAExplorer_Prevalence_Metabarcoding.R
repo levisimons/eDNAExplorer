@@ -26,12 +26,11 @@ process_error <- function(e, filename = "error.json") {
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
     paste("s3://ednaexplorer/errors/prevalence/", new_filename, sep = "")
+    system(paste("aws s3 cp ", new_filename, " ", s3_path, sep = ""), intern = TRUE)
+    system(paste("rm ",new_filename,sep=""))
   } else {
     paste("s3://ednaexplorer/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
-  
-  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
-  system(paste("rm ",filename,sep=""))
   stop(error_message)
 }
 
