@@ -154,6 +154,9 @@ tryCatch(
     Sample <- Metadata[!is.na(Metadata$fastqid),]
     rownames(Sample) <- Sample$fastqid
     Sample$fastqid <- NULL
+    if(nrow(Sample) == 0 || ncol(Sample) == 0) {
+      stop("Error: Sample data frame is empty. Cannot proceed.")
+    }
     Sample <- sample_data(Sample)
     remaining_Samples <- rownames(Sample)
     
@@ -184,7 +187,7 @@ tryCatch(
     }
     sapply(dbListConnections(Database_Driver), dbDisconnect)
     system(paste("rm ",TronkoFile_tmp,sep=""))
-    system("rm ",SubsetFile,sep="")
+    system(paste("rm ",SubsetFile,sep=""))
     
     if(nrow(TronkoDB) > 1){
       #Create OTU matrix
