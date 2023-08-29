@@ -12,12 +12,12 @@ require(digest)
 require(uuid)
 
 # Write error output to our json file.
-process_error <- function(e, filename) {
+process_error <- function(e) {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
   json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
-  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  new_filename <- paste(timestamp, "error.json", sep = "_") # Concatenate timestamp with filename
   write(json_content, new_filename)
 
   s3_path <- paste("s3://ednaexplorer/errors/prevalence/", new_filename, sep = "")
@@ -207,6 +207,6 @@ tryCatch(
     sapply(dbListConnections(Database_Driver), dbDisconnect)
   },
   error = function(e) {
-    process_error(e, filename)
+    process_error(e)
   }
 )
