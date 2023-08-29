@@ -19,18 +19,15 @@ process_error <- function(e, filename = "error.json") {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
   json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
-  write(json_content, filename)
-  
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
-  
-  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://ednaexplorer/errors/prevalence/", new_filename, sep = "")
+  write(json_content, new_filename)
+
+  if (is.null(ProjectID) || ProjectID == ""){
+    s3_path <- paste("s3://ednaexplorer/errors/prevalence/", new_filename, sep = "")
     system(paste("aws s3 cp ", new_filename, " ", s3_path, sep = ""), intern = TRUE)
     system(paste("rm ",new_filename,sep=""))
-  } else {
-    paste("s3://ednaexplorer/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
-  }
+  }  
   stop(error_message)
 }
 
