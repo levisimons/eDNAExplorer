@@ -143,6 +143,16 @@ tryCatch(
     
     #Match metadata column names to format in SQL database.
     colnames(Metadata) <- gsub(" ","_",tolower(colnames(Metadata)))
+
+    #Set character and numeric columns.
+    col_non_numeric <- c("Sample_Date","name","biome_type","eco_name","fastq_forward_reads_filename","fastqid","fastq_reverse_reads_filename",
+                  "grtgroup","hybas_id","marker_1","nation","projectid","realm","sample_date","sample_id","sample_type","sequencing_platform",
+                         "site","state","desig_eng","gov_type","iucn_cat","uniqueid","marker_1_forward_ps","marker_1_reverse_ps","landform",
+                         "wdpa_pid","marker_10","marker_10_forward_ps","marker_10_reverse_ps","marker_2","marker_2_forward_ps","marker_2_reverse_ps",
+                         "marker_3","marker_3_forward_ps","marker_3_reverse_ps","marker_4","marker_4_forward_ps","marker_4_reverse_ps","marker_5",
+                         "marker_5_forward_ps","marker_5_reverse_ps","marker_6","marker_6_forward_ps","marker_6_reverse_ps","marker_7",
+                         "marker_7_forward_ps","marker_7_reverse_ps","marker_8","marker_8_forward_ps","marker_8_reverse_ps","marker_9",
+                         "marker_9_forward_ps","marker_9_reverse_ps")
     
     #Create Metadata database.
     con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
