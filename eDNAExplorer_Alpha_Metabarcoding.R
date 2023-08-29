@@ -183,7 +183,7 @@ tryCatch(
       if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
     }
     sapply(dbListConnections(Database_Driver), dbDisconnect)
-    system(paste("rm ",TronkoFile_tmp,sep=" "))
+    system(paste("rm ",TronkoFile_tmp,sep=""))
     system("rm ",SubsetFile,sep="")
     
     if(nrow(TronkoDB) > 1){
