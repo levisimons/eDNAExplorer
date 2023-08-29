@@ -184,7 +184,7 @@ tryCatch(
     }
     sapply(dbListConnections(Database_Driver), dbDisconnect)
     system(paste("rm ",TronkoFile_tmp,sep=""))
-    system("rm ",SubsetFile,sep="")
+    system(paste("rm ",SubsetFile,sep=""))
     
     if(nrow(TronkoDB) > 1){
       #Create OTU matrix
