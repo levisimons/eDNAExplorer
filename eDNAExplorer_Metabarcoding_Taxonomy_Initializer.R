@@ -310,10 +310,10 @@ tryCatch(
         
         #Save Tronko output.
         TronkoOutput_Filename <- paste(Primer,".csv",sep="")
-        TronkoTile_tmp <- paste(Primer,"_taxonomy_",UUIDgenerate(),".csv",sep="")
-        write.table(x=TronkoProject,file=TronkoTile_tmp,quote=FALSE,sep=",",row.names = FALSE)
-        system(paste("aws s3 cp ",TronkoTile_tmp," s3://ednaexplorer/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-        system(paste("rm ",TronkoTile_tmp,sep=""))
+        TronkoFile_tmp <- paste(Primer,"_taxonomy_",UUIDgenerate(),".csv",sep="")
+        write.table(x=TronkoProject,file=TronkoFile_tmp,quote=FALSE,sep=",",row.names = FALSE)
+        system(paste("aws s3 cp ",TronkoFile_tmp," s3://ednaexplorer/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+        system(paste("rm ",TronkoFile_tmp,sep=""))
         
         #Create database of Phylopic images and common names for taxa.
         TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
