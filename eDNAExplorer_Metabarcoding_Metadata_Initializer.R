@@ -90,8 +90,8 @@ tryCatch(
     Project_Data <- Project_Data %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
     Project_Data <- as.data.frame(Project_Data)
     Metadata_Initial <- Project_Data
-    #Replace missing spatial uncertainty values with the default of 30m.
-    Metadata_Initial["Spatial Uncertainty"][is.na(Metadata_Initial["Spatial Uncertainty"])] <- 30
+    #Remove input spatial uncertainty values.
+    Metadata_Initial["Spatial Uncertainty"] <- NULL
     
     Required_Variables <- c("Site","Sample ID","Sample Type","Longitude","Latitude","Sample Date","Sequencing Platform","Spatial Uncertainty","Sequence Length","Fastq Forward Reads Filename","Fastq Reverse Reads Filename",grep("^Marker [[:digit:]]$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Forward PS$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Reverse PS$",colnames(Metadata_Initial),value=T))
     #Get field variables from initial metadata.  These are generally project-specific non-required variables.
@@ -106,7 +106,7 @@ tryCatch(
     Metadata_Extracted[Metadata_Extracted==-32768] <- NA
     
     #Merge metadata
-    Metadata <- dplyr::left_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"))
+    Metadata <- dplyr::left_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude"))
     
     #Add project ID
     Metadata$ProjectID <- ProjectID
