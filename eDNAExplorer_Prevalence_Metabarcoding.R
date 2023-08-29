@@ -23,6 +23,7 @@ process_error <- function(e) {
   s3_path <- paste("s3://ednaexplorer/errors/prevalence/", new_filename, sep = "")
   system(paste("aws s3 cp ", new_filename, " ", s3_path," --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
   system(paste("rm ",new_filename,sep=""))  
+  print(paste("function error",new_filename,sep=""))
   stop(error_message)
 }
 
@@ -80,6 +81,7 @@ tryCatch(
       filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList, sep = "_")
       filename <- paste(filename, ".json", sep = "")
       filename <- tolower(filename)
+      print(paste("parameters read successfully",filename,sep=""))
     }
   },
   error = function(e) {
@@ -118,6 +120,8 @@ tryCatch(
       filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList, sep = "_")
       filename <- paste(filename, ".json", sep = "")
       filename <- tolower(filename)
+
+      print(paste("parameters read successfully in main function",filename,sep=""))
 
       # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
       data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
@@ -242,6 +246,7 @@ tryCatch(
       SampleDB$filteredSamples <- num_filteredSamples
       datasets <- list(datasets = list(results = TronkoDB, metadata = SampleDB))
       write(toJSON(datasets), filename)
+      print(paste("main function successful",filename,sep=""))
       system(paste("aws s3 cp ", filename, " s3://ednaexplorer/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
       system(paste("rm ", filename, sep = ""))
     }
