@@ -10,6 +10,7 @@ require(DBI)
 require(RPostgreSQL)
 require(digest)
 require(zoo)
+require(uuid)
 
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
@@ -160,13 +161,14 @@ tryCatch(
     
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
-    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    TronkoTile_tmp <- paste(Marker,"_spacetime_",UUIDgenerate(),".csv",sep="")
+    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
-    SubsetFile <- "subset.csv"
-    awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile, SubsetFile)
+    SubsetFile <- paste("subset_spacetime_",UUIDgenerate(),".csv",sep="")
+    awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
     system(awk_command, intern = TRUE)
     # Filter on the number of mismatches.  Remove entries with NA for mismatches and for the selected taxonomic rank.
-    TronkoInput <- fread(file = "subset.csv", header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
+    TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
     TronkoInput <- TronkoInput %>%
       filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>%
@@ -181,8 +183,8 @@ tryCatch(
     if (SelectedSpeciesList == "None") {
       TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
     }
-    system(paste("rm", TronkoFile, sep = " "))
-    system("rm subset.csv")
+    system(paste("rm ",TronkoFile_tmp,sep=""))
+    system("rm ",SubsetFile,sep="")
     
     #Read in Taxonomy output and filter it.
     TaxonomyInput <- tbl(con,"Taxonomy")
