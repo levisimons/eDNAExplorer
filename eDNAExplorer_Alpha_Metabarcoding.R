@@ -19,6 +19,7 @@ require(data.table)
 require(DBI)
 require(RPostgreSQL)
 require(digest)
+require(uuid)
 
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
@@ -158,9 +159,10 @@ tryCatch(
     
     #Read in Tronko output and filter it.
     TronkoFile <- paste(sample_Primer,".csv",sep="")
-    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",sample_ProjectID,"/",TronkoFile," ",paste(sample_Primer,"_alpha_",as.numeric(Sys.time()),".csv",sep="")," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-    SubsetFile <- paste("subset_alpha_",as.numeric(Sys.time()),".csv",sep="")
-    awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile, SubsetFile)
+    TronkoTile_tmp <- paste(sample_Primer,"_alpha_",UUIDgenerate(),".csv",sep="")
+    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",sample_ProjectID,"/",TronkoFile," ",TronkoFile_tmp," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    SubsetFile <- paste("subset_alpha_",UUIDgenerate(),".csv",sep="")
+    awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
     system(awk_command, intern = TRUE)
     TronkoInput <- fread(file=SubsetFile,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
@@ -181,7 +183,7 @@ tryCatch(
       if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
     }
     sapply(dbListConnections(Database_Driver), dbDisconnect)
-    system(paste("rm",paste(sample_Primer,"_alpha_",as.numeric(Sys.time()),".csv",sep=""),sep=" "))
+    system(paste("rm ",TronkoFile_tmp,sep=" "))
     system("rm ",SubsetFile,sep="")
     
     if(nrow(TronkoDB) > 1){
