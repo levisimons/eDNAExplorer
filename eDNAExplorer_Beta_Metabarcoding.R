@@ -165,7 +165,7 @@ tryCatch(
     SubsetFile <- paste("subset_beta_",UUIDgenerate(),".csv",sep="")
     awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
     system(awk_command, intern = TRUE)
-    TronkoInput <- fread(file="subset.csv",header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+    TronkoInput <- fread(file=SubsetFile,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
     if(sample_TaxonomicRank != "species"){
       TronkoInput <- TronkoInput %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
