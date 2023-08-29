@@ -21,7 +21,7 @@ process_error <- function(e) {
   write(json_content, new_filename)
 
   s3_path <- paste("s3://ednaexplorer/errors/prevalence/", new_filename, sep = "")
-  system(paste("aws s3 cp ", new_filename, " ", s3_path, sep = ""), intern = TRUE)
+  system(paste("aws s3 cp ", new_filename, " ", s3_path," --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
   system(paste("rm ",new_filename,sep=""))  
   stop(error_message)
 }
@@ -55,6 +55,7 @@ tryCatch(
     if (length(args) != 9) {
       stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList.", call. = FALSE)
     } else if (length(args) == 9) {
+      ProjectID <- args[1]
       First_Date <- args[2]
       Last_Date <- args[3]
       Marker <- args[4]
@@ -92,6 +93,7 @@ tryCatch(
     if (length(args) != 9) {
       stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList.", call. = FALSE)
     } else if (length(args) == 9) {
+      ProjectID <- args[1]
       First_Date <- args[2]
       Last_Date <- args[3]
       Marker <- args[4]
