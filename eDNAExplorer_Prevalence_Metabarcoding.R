@@ -11,11 +11,8 @@ require(RPostgreSQL)
 require(digest)
 require(uuid)
 
-# Fetch project ID early so we can use it for error output when possible.
-ProjectID <- args[1]
-
 # Write error output to our json file.
-process_error <- function(e, filename = "error.json") {
+process_error <- function(e, filename) {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
   json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
@@ -23,11 +20,9 @@ process_error <- function(e, filename = "error.json") {
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   write(json_content, new_filename)
 
-  if (is.null(ProjectID) || ProjectID == ""){
-    s3_path <- paste("s3://ednaexplorer/errors/prevalence/", new_filename, sep = "")
-    system(paste("aws s3 cp ", new_filename, " ", s3_path, sep = ""), intern = TRUE)
-    system(paste("rm ",new_filename,sep=""))
-  }  
+  s3_path <- paste("s3://ednaexplorer/errors/prevalence/", new_filename, sep = "")
+  system(paste("aws s3 cp ", new_filename, " ", s3_path, sep = ""), intern = TRUE)
+  system(paste("rm ",new_filename,sep=""))  
   stop(error_message)
 }
 
@@ -54,6 +49,8 @@ db_pass <- Sys.getenv("db_pass")
 # FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 # SpeciesList:string Name of csv file containing selected species list.
 # Rscript --vanilla eDNAExplorer_Prevalence_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
+
+# Generate the output filename for cached plots.
 tryCatch(
   {
     if (length(args) != 9) {
@@ -79,15 +76,7 @@ tryCatch(
     FilterThreshold <- as.numeric(FilterThreshold)
     SelectedSpeciesList <- as.character(SpeciesList)
     Project_ID <- as.character(ProjectID)
-  },
-  error = function(e) {
-    process_error(e)
-  }
-)
-
-# Generate the output filename for cached plots.
-tryCatch(
-  {
+    
     filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList, sep = "_")
     filename <- paste(filename, ".json", sep = "")
     filename <- tolower(filename)
