@@ -161,7 +161,7 @@ tryCatch(
     
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
-    TronkoTile_tmp <- paste(Marker,"_spacetime_",UUIDgenerate(),".csv",sep="")
+    TronkoFile_tmp <- paste(Marker,"_spacetime_",UUIDgenerate(),".csv",sep="")
     system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
     SubsetFile <- paste("subset_spacetime_",UUIDgenerate(),".csv",sep="")
