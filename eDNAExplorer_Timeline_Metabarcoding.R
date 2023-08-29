@@ -12,6 +12,7 @@ require(lubridate)
 require(plotly)
 require(jsonlite)
 require(data.table)
+require(uuid)
 
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
