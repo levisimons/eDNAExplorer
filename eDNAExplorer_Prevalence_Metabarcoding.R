@@ -183,7 +183,7 @@ tryCatch(
       TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
     }
     system(paste("rm ",TronkoFile_tmp,sep=""))
-    system("rm ",SubsetFile,sep="")
+    system(paste("rm ",SubsetFile,sep=""))
     
     # Read in Taxonomy output and filter it.
     TaxonomyInput <- tbl(con, "Taxonomy")
