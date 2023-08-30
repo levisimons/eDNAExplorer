@@ -40,6 +40,7 @@ process_error <- function(e, filename = "error.json") {
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
   system("rm ne_10m_admin_1_states_provinces.*")
+  system(paste("rm ",filename,sep=""))
   RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
   stop(error_message)
 }
