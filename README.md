@@ -22,7 +22,7 @@ Provided you have [docker installed](https://docs.docker.com/desktop/) - you can
 
 After successfully building the image you can run an interactive shell to execute local scripts via:
 
-`docker run --platform linux/amd64 -v $PWD:/project -it e65b782b0ebb /bin/bash `
+`docker run --platform linux/amd64 -v $PWD:/project -it edna-explorer /bin/bash`
 
 From there you can simply `cd ./project` and execute R scripts directly via the command line.
 
