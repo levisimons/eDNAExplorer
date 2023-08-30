@@ -14,7 +14,30 @@ Run the following to setup your local environment file:
 
 Edit the `.env` file with the actual credentials necessary to connect to AWS, postgres, and redis.
 
-## Build the Docker Image
+## Developing Locally with a Pre-Built Container
+
+You can develop locally now with our pre-built container:
+https://hub.docker.com/repository/docker/jimjeffers/edna-explorer/general
+
+For your convenience we've supplied some shell scripts to easily execute commands or bash into the container to test things. First and foremost ensure you've configured your local environment variables. For the time being we will be using production environment variables until a staging environment is setup. So please use the `.env` from the jet stream instance so that you can connect to the jetstream bucket and the supabase database.
+
+### Running Local Scripts
+
+You can quickly and easily run scripts via the `./scripts/run.sh` shell script. Here's an example:
+
+```
+./scripts/run.sh Rscript --vanilla eDNAExplorer_Alpha_Metabarcoding.R "clk06lckc0001jn0f9hw7rb86" "2020-07-24" "2021-02-20" "CO1_Metazoa" "25" "species" "1000" "0.00003" "None" "ghm" "Chao1"
+```
+
+### Run an Interactive Shell
+
+If you need to test something within the environment to ensure things are working as expected or to experiment installing different packages without rebuilding the docker container you can use the `shell.sh` script as follows:
+
+```
+./scripts/shell.sh`
+```
+
+## Build the Docker Image Locally
 
 Provided you have [docker installed](https://docs.docker.com/desktop/) - you can build a local instance of the conda environment with phyloseq pre-installed with the following command:
 
