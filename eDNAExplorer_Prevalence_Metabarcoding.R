@@ -19,7 +19,7 @@ process_error <- function(e) {
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, "error.json", sep = "_") # Concatenate timestamp with filename
   write(json_content, new_filename)
-
+  
   s3_path <- paste("s3://ednaexplorer/errors/prevalence/", new_filename, sep = "")
   system(paste("aws s3 cp ", new_filename, " ", s3_path," --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
   system(paste("rm ",new_filename,sep=""))  
@@ -64,7 +64,7 @@ tryCatch(
       CountThreshold <- args[7]
       FilterThreshold <- args[8]
       SpeciesList <- args[9]
-
+      
       CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
       ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
       FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
@@ -76,7 +76,7 @@ tryCatch(
       FilterThreshold <- as.numeric(FilterThreshold)
       SelectedSpeciesList <- as.character(SpeciesList)
       Project_ID <- as.character(ProjectID)
-
+      
       filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList, sep = "_")
       filename <- paste(filename, ".json", sep = "")
       filename <- tolower(filename)
@@ -90,41 +90,15 @@ tryCatch(
 # Generate the output filename for cached plots.
 tryCatch(
   {
-    if (length(args) != 9) {
-      stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList.", call. = FALSE)
-    } else if (length(args) == 9) {
-      ProjectID <- args[1]
-      First_Date <- args[2]
-      Last_Date <- args[3]
-      Marker <- args[4]
-      Num_Mismatch <- args[5]
-      TaxonomicRank <- args[6]
-      CountThreshold <- args[7]
-      FilterThreshold <- args[8]
-      SpeciesList <- args[9]
-
-      CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
-      ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
-      FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
-      TaxonomicRanks <- c("superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species")
-      First_Date <- lubridate::ymd(First_Date)
-      Last_Date <- lubridate::ymd(Last_Date)
-      Num_Mismatch <- as.numeric(Num_Mismatch)
-      CountThreshold <- as.numeric(CountThreshold)
-      FilterThreshold <- as.numeric(FilterThreshold)
-      SelectedSpeciesList <- as.character(SpeciesList)
-      Project_ID <- as.character(ProjectID)
-
-      filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList, sep = "_")
-      filename <- paste(filename, ".json", sep = "")
-      filename <- tolower(filename)
-
-      # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
-      data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
-      write(toJSON(data_to_write), filename)
-      system(paste("aws s3 cp ", filename, " s3://ednaexplorer/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
-      system(paste("rm ", filename, sep = ""))
-    }
+    filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList, sep = "_")
+    filename <- paste(filename, ".json", sep = "")
+    filename <- tolower(filename)
+    
+    # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
+    data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
+    write(toJSON(data_to_write), filename)
+    system(paste("aws s3 cp ", filename, " s3://ednaexplorer/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+    system(paste("rm ", filename, sep = ""))
     
     # Establish sql connection
     Database_Driver <- dbDriver("PostgreSQL")
@@ -152,6 +126,9 @@ tryCatch(
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
+    if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
+      stop("Error: Sample data frame is empty. Cannot proceed.")
+    }
     
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
