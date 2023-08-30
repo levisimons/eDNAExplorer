@@ -40,6 +40,7 @@ process_error <- function(e, filename = "error.json") {
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
   system("rm ne_10m_admin_1_states_provinces.*")
+  system(paste("rm ",filename,sep=""))
   RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
   stop(error_message)
 }
@@ -90,8 +91,6 @@ tryCatch(
     Project_Data <- Project_Data %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
     Project_Data <- as.data.frame(Project_Data)
     Metadata_Initial <- Project_Data
-    #Replace missing spatial uncertainty values with the default of 30m.
-    Metadata_Initial["Spatial Uncertainty"][is.na(Metadata_Initial["Spatial Uncertainty"])] <- 30
     
     Required_Variables <- c("Site","Sample ID","Sample Type","Longitude","Latitude","Sample Date","Sequencing Platform","Spatial Uncertainty","Sequence Length","Fastq Forward Reads Filename","Fastq Reverse Reads Filename",grep("^Marker [[:digit:]]$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Forward PS$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Reverse PS$",colnames(Metadata_Initial),value=T))
     #Get field variables from initial metadata.  These are generally project-specific non-required variables.
@@ -106,7 +105,7 @@ tryCatch(
     Metadata_Extracted[Metadata_Extracted==-32768] <- NA
     
     #Merge metadata
-    Metadata <- dplyr::left_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"))
+    Metadata <- dplyr::left_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"),na_matches="never")
     
     #Add project ID
     Metadata$ProjectID <- ProjectID
@@ -145,6 +144,18 @@ tryCatch(
     
     #Match metadata column names to format in SQL database.
     colnames(Metadata) <- gsub(" ","_",tolower(colnames(Metadata)))
+
+    #Set character and numeric columns.
+    col_non_numeric <- c("name","biome_type","eco_name","fastq_forward_reads_filename","fastqid","fastq_reverse_reads_filename",
+                  "grtgroup","hybas_id","marker_1","nation","projectid","realm","sample_date","sample_id","sample_type","sequencing_platform",
+                         "site","state","desig_eng","gov_type","iucn_cat","uniqueid","marker_1_forward_ps","marker_1_reverse_ps","landform",
+                         "wdpa_pid","marker_10","marker_10_forward_ps","marker_10_reverse_ps","marker_2","marker_2_forward_ps","marker_2_reverse_ps",
+                         "marker_3","marker_3_forward_ps","marker_3_reverse_ps","marker_4","marker_4_forward_ps","marker_4_reverse_ps","marker_5",
+                         "marker_5_forward_ps","marker_5_reverse_ps","marker_6","marker_6_forward_ps","marker_6_reverse_ps","marker_7",
+                         "marker_7_forward_ps","marker_7_reverse_ps","marker_8","marker_8_forward_ps","marker_8_reverse_ps","marker_9",
+                         "marker_9_forward_ps","marker_9_reverse_ps")
+    col_numeric <- colnames(Metadata)[!(colnames(Metadata) %in% col_non_numeric)]
+    Metadata[, col_numeric] <- lapply(Metadata[, col_numeric], as.numeric)
     
     #Create Metadata database.
     con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
