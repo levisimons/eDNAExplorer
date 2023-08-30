@@ -33,3 +33,16 @@ RUN wget "https://d1vvhvl2y92vvt.cloudfront.net/awscli-exe-linux-x86_64.zip" -O 
   unzip awscliv2.zip && \
   ./aws/install -i /root/aws
 ENV PATH="/root/aws/bin:${PATH}"
+
+# Set the working directory
+WORKDIR /project
+
+# Copy entrypoint script into the image
+COPY ./scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set the entry point
+ENTRYPOINT ["/entrypoint.sh"]
+
+
+
