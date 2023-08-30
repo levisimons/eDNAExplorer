@@ -1,7 +1,6 @@
 #!/usr/bin/env Rscript
 rm(list = ls())
 args <- commandArgs(trailingOnly = TRUE)
-#require(aws.s3)
 require(tidyr)
 require(dplyr)
 require(ggplot2)
@@ -18,23 +17,17 @@ require(uuid)
 ProjectID <- args[1]
 
 # Write error output to our json file.
-process_error <- function(e, filename = "error.json") {
+process_error <- function(e) {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
   json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
-  write(json_content, filename)
-  
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
-  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  new_filename <- paste(timestamp, "error.json", sep = "_") # Concatenate timestamp with filename
+  write(json_content, new_filename)
   
-  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://ednaexplorer/errors/map/", new_filename, sep = "")
-  } else {
-    paste("s3://ednaexplorer/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
-  }
-  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
-  system(paste("rm ",filename,sep=""))
-  sapply(dbListConnections(Database_Driver), dbDisconnect)
+  s3_path <- paste("s3://ednaexplorer/errors/map/", new_filename, sep = "")
+  system(paste("aws s3 cp ", new_filename, " ", s3_path," --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+  system(paste("rm ",new_filename,sep=""))  
   stop(error_message)
 }
 
@@ -70,15 +63,20 @@ tryCatch(
       CountThreshold <- args[5]
       FilterThreshold <- args[6]
       Taxon_name <- args[7]
+      #Define variables.
+      Project_ID <- as.character(ProjectID)
+      Taxon <- as.character(Taxon_name)
+      #Get GBIF taxonomy key for taxon.
+      Taxon_GBIF <- name_backbone(name=Taxon,rank=TaxonomicRank)$usageKey
+      #Ensure numeric values.
+      Num_Mismatch <- as.numeric(Num_Mismatch)
+      CountThreshold <- as.numeric(CountThreshold)
+      FilterThreshold <- as.numeric(FilterThreshold)
+      #Define output filename.
+      filename <- paste("Map_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(FilterThreshold,scientific=F),".json",sep="")
+      filename <- tolower(filename)
+      filename <- gsub(" ","_",filename)
     }
-    Project_ID <- as.character(ProjectID)
-    Taxon <- as.character(Taxon_name)
-    #Get GBIF taxonomy key for taxon.
-    Taxon_GBIF <- name_backbone(name=Taxon,rank=TaxonomicRank)$usageKey
-    #Ensure numeric values.
-    Num_Mismatch <- as.numeric(Num_Mismatch)
-    CountThreshold <- as.numeric(CountThreshold)
-    FilterThreshold <- as.numeric(FilterThreshold)
   },
   error = function(e) {
     process_error(e)
@@ -88,6 +86,12 @@ tryCatch(
 # Generate the output filename for cached plots.
 tryCatch(
   {
+    # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
+    data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
+    write(toJSON(data_to_write), filename)
+    system(paste("aws s3 cp ", filename, " s3://ednaexplorer/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+    system(paste("rm ", filename, sep = ""))
+    
     #Establish sql connection
     Database_Driver <- dbDriver("PostgreSQL")
     sapply(dbListConnections(Database_Driver), dbDisconnect)
@@ -118,14 +122,14 @@ tryCatch(
     
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
-    TronkoFile_tmp <- paste(Marker,"_map_",UUIDgenerate(),".csv",sep="")
+    TronkoFile_tmp <- paste(Marker,"_prevalence_",UUIDgenerate(),".csv",sep="")
     system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
-    SubsetFile <- paste("subset_map_",UUIDgenerate(),".csv",sep="")
+    SubsetFile <- paste("subset_prevalence_",UUIDgenerate(),".csv",sep="")
     awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
     system(awk_command, intern = TRUE)
     # Filter on the number of mismatches.  Remove entries with NA for mismatches and for the selected taxonomic rank.
-    TronkoInput <- fread(file = SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
+    TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
     TronkoInput <- TronkoInput %>%
       filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>%
@@ -134,13 +138,12 @@ tryCatch(
       filter(n() > CountThreshold) %>%
       select(SampleID, kingdom, phylum, class, order, family, genus, species)
     TronkoDB <- as.data.frame(TronkoInput)
-    TronkoDB <- TronkoDB[TronkoDB[,TaxonomicRank]==Taxon,]
+    system(paste("rm ",TronkoFile_tmp,sep=""))
+    system(paste("rm ",SubsetFile,sep=""))
     
     #Get samples where taxon occurs and meets Tronko filters.
     TaxonDB <- TronkoDB[!duplicated(TronkoDB),]
     TaxonDB$SampleID <- gsub("-","_",TaxonDB$SampleID)
-    system(paste("rm ",TronkoFile_tmp,sep=""))
-    system("rm ",SubsetFile,sep="")
     taxon_samples <- unique(TaxonDB$SampleID)
     taxon_projects <- ProjectID
     
@@ -152,8 +155,15 @@ tryCatch(
       select(longitude,latitude)
     Metadata_Filtered <- as.data.frame(Metadata_Filtered)
     
-    Metadata_Filtered$source <- "eDNA"
-    Metadata_Filtered <- Metadata_Filtered[,c("source","longitude","latitude")]
+    #Get unique taxon locations
+    if(nrow(Metadata_Filtered) < 1){
+      Metadata_Filtered <- data.frame(matrix(nrow=1,ncol=3))
+      colnames(Metadata_Filtered) <- c("source","longitude","latitude")
+      Metadata_Filtered$source <- "eDNA"
+    }
+    if(nrow(Metadata_Filtered) >=1){
+      Metadata_Filtered$source <- "eDNA"
+    }
     
     sapply(dbListConnections(Database_Driver), dbDisconnect)
     
