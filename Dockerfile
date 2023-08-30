@@ -26,3 +26,10 @@ RUN conda env create -f /tmp/env.yml
 RUN echo "source activate $(head -1 /tmp/env.yml | cut -d' ' -f2)" > ~/.bashrc
 ENV PATH /opt/conda/envs/$(head -1 /tmp/env.yml | cut -d' ' -f2)/bin:$PATH
 RUN /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh && conda activate GBIF_env && Rscript /tmp/install.R"
+
+# Install AWS CLI
+RUN apt-get install -y unzip
+RUN wget "https://d1vvhvl2y92vvt.cloudfront.net/awscli-exe-linux-x86_64.zip" -O awscliv2.zip && \
+  unzip awscliv2.zip && \
+  ./aws/install -i /root/aws
+ENV PATH="/root/aws/bin:${PATH}"
