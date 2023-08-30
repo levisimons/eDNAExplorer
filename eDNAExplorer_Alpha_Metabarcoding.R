@@ -84,24 +84,29 @@ tryCatch(
       SpeciesList <- args[9]
       EnvironmentalParameter <- args[10]
       AlphaDiversity <- args[11]
+      #Define filters in Phyloseq as global parameters.
+      sample_ProjectID <<- as.character(ProjectID)
+      sample_First_Date <<- lubridate::ymd(First_Date)
+      sample_Last_Date <<- lubridate::ymd(Last_Date)
+      sample_Primer <<- as.character(Marker)
+      sample_TaxonomicRank <<- as.character(TaxonomicRank)
+      sample_Num_Mismatch <<- as.numeric(Num_Mismatch)
+      sample_CountThreshold <<- as.numeric(CountThreshold)
+      sample_FilterThreshold <<- as.numeric(FilterThreshold)
+      EnvironmentalVariable <<- as.character(EnvironmentalParameter)
+      AlphaDiversityMetric <<- as.character(AlphaDiversity)
+      SelectedSpeciesList <<- as.character(SpeciesList)
+      
+      CategoricalVariables <- c("site","grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
+      ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
+      FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
+      TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
+      
+      #Save plot name.
+      filename <- paste("Alpha_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",AlphaDiversityMetric,"SpeciesList",SelectedSpeciesList,".json",sep="_")
+      filename <- gsub("_.json",".json",filename)
+      filename <- tolower(filename)
     }
-    #Define filters in Phyloseq as global parameters.
-    sample_ProjectID <<- as.character(ProjectID)
-    sample_First_Date <<- lubridate::ymd(First_Date)
-    sample_Last_Date <<- lubridate::ymd(Last_Date)
-    sample_Primer <<- as.character(Marker)
-    sample_TaxonomicRank <<- as.character(TaxonomicRank)
-    sample_Num_Mismatch <<- as.numeric(Num_Mismatch)
-    sample_CountThreshold <<- as.numeric(CountThreshold)
-    sample_FilterThreshold <<- as.numeric(FilterThreshold)
-    EnvironmentalVariable <<- as.character(EnvironmentalParameter)
-    AlphaDiversityMetric <<- as.character(AlphaDiversity)
-    SelectedSpeciesList <<- as.character(SpeciesList)
-    
-    CategoricalVariables <- c("site","grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
-    ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
-    FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
-    TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
     
   },
   error = function(e) {
@@ -112,6 +117,12 @@ tryCatch(
 # Generate the output filename for cached plots.
 tryCatch(
   {
+    # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
+    data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
+    write(toJSON(data_to_write), filename)
+    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("rm ",filename,sep=""))
+    
     #Establish sql connection
     Database_Driver <- dbDriver("PostgreSQL")
     sapply(dbListConnections(Database_Driver), dbDisconnect)
@@ -123,17 +134,6 @@ tryCatch(
       SpeciesList_df <- SpeciesList_df %>% filter(species_list == SelectedSpeciesList)
       SpeciesList_df <- as.data.frame(SpeciesList_df)
     }
-    
-    #Save default blank plot if not enough data is available.
-    Stat_test <- "Not enough data to perform a Kruskal-Wallis test on alpha diversity."
-    p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
-    jfig <- plotly_json(p, FALSE)
-    filename <- paste("Alpha_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",AlphaDiversityMetric,"SpeciesList",SelectedSpeciesList,".json",sep="_")
-    filename <- gsub("_.json",".json",filename)
-    filename <- tolower(filename)
-    write(jfig,filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-    system(paste("rm ",filename,sep=""))
     
     # Read in metadata and filter it.
     Metadata <- tbl(con, "TronkoMetadata")
@@ -151,12 +151,12 @@ tryCatch(
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
     
     #Create sample metadata matrix
+    if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
+      stop("Error: Sample data frame is empty. Cannot proceed.")
+    }
     Sample <- Metadata[!is.na(Metadata$fastqid),]
     rownames(Sample) <- Sample$fastqid
     Sample$fastqid <- NULL
-    if(nrow(Sample) == 0 || ncol(Sample) == 0) {
-      stop("Error: Sample data frame is empty. Cannot proceed.")
-    }
     Sample <- sample_data(Sample)
     remaining_Samples <- rownames(Sample)
     
