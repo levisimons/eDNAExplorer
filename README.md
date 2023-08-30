@@ -24,7 +24,12 @@ After successfully building the image you can run an interactive shell to execut
 
 `docker run --platform linux/amd64 -v $PWD:/project -it edna-explorer /bin/bash`
 
-From there you can simply `cd ./project` and execute R scripts directly via the command line.
+From there you can simply `cd ./project` and execute R scripts directly via the command line:
+
+```
+cd ./project
+Rscript --vanilla eDNAExplorer_Alpha_Metabarcoding.R "clk3duk760001ml0fug8cvmp0" "2020-07-24" "2021-02-20" "CO1_Metazoa" "25" "species" "1000" "0.00003" "None" "ghm" "Chao1"
+```
 
 # Workflow
 
