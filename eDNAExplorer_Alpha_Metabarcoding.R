@@ -160,32 +160,30 @@ tryCatch(
     Sample <- sample_data(Sample)
     remaining_Samples <- rownames(Sample)
     
-    #Read in Tronko output and filter it.
-    TronkoFile <- paste(sample_Primer,".csv",sep="")
-    TronkoFile_tmp <- paste(sample_Primer,"_alpha_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/",sample_ProjectID,"/",TronkoFile," ",TronkoFile_tmp," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-    SubsetFile <- paste("subset_alpha_",UUIDgenerate(),".csv",sep="")
+    # Read in Tronko output and filter it.
+    TronkoFile <- paste(Marker, ".csv", sep = "")
+    TronkoFile_tmp <- paste(Marker,"_prevalence_",UUIDgenerate(),".csv",sep="")
+    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", sample_ProjectID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
+    SubsetFile <- paste("subset_prevalence_",UUIDgenerate(),".csv",sep="")
     awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
     system(awk_command, intern = TRUE)
-    TronkoInput <- fread(file=SubsetFile,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+    # Filter on the number of mismatches.  Remove entries with NA for mismatches and for the selected taxonomic rank.
+    TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
-    if(sample_TaxonomicRank != "species"){
-      TronkoInput <- TronkoInput %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
-        group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
-        select(SampleID,species,sample_TaxonomicRank)
-      TronkoDB <- as.data.frame(TronkoInput)
-      if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
-      if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
-      TronkoDB$species <- NULL
-    } else{
-      TronkoInput <- TronkoInput %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% filter(!is.na(!!sym(sample_TaxonomicRank))) %>%
-        group_by(SampleID) %>% filter(n() > sample_CountThreshold) %>% 
-        select(SampleID,sample_TaxonomicRank)
-      TronkoDB <- as.data.frame(TronkoInput)
-      if(SelectedSpeciesList != "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample) & TronkoDB$species %in% SpeciesList_df$name,]}
-      if(SelectedSpeciesList == "None"){TronkoDB <- TronkoDB[TronkoDB$SampleID %in% rownames(Sample),]}
+    TronkoInput <- TronkoInput %>%
+      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>%
+      filter(!is.na(!!sym(TaxonomicRank))) %>%
+      group_by(SampleID) %>%
+      filter(n() > CountThreshold) %>%
+      select(SampleID, kingdom, phylum, class, order, family, genus, species)
+    TronkoDB <- as.data.frame(TronkoInput)
+    if (SelectedSpeciesList != "None") {
+      TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name, ]
     }
-    sapply(dbListConnections(Database_Driver), dbDisconnect)
+    if (SelectedSpeciesList == "None") {
+      TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
+    }
     system(paste("rm ",TronkoFile_tmp,sep=""))
     system(paste("rm ",SubsetFile,sep=""))
     
