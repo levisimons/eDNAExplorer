@@ -135,10 +135,10 @@ tryCatch(
     Metadata <- as.data.frame(Metadata)
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
-    Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
     }
+    Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
     
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
