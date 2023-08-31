@@ -65,6 +65,7 @@ tryCatch(
     if (length(args) != 9) {
       stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList.", call. = FALSE)
     } else if (length(args) == 9) {
+      ProjectID <- args[1]
       First_Date <- args[2]
       Last_Date <- args[3]
       Marker <- args[4]
@@ -73,18 +74,19 @@ tryCatch(
       CountThreshold <- args[7]
       FilterThreshold <- args[8]
       SpeciesList <- args[9]
+      
+      CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
+      ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
+      FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
+      TaxonomicRanks <- c("superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+      First_Date <- lubridate::ymd(First_Date)
+      Last_Date <- lubridate::ymd(Last_Date)
+      Num_Mismatch <- as.numeric(Num_Mismatch)
+      CountThreshold <- as.numeric(CountThreshold)
+      FilterThreshold <- as.numeric(FilterThreshold)
+      SelectedSpeciesList <- as.character(SpeciesList)
+      Project_ID <- as.character(ProjectID)
     }
-    CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
-    ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
-    FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
-    TaxonomicRanks <- c("superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species")
-    First_Date <- lubridate::ymd(First_Date)
-    Last_Date <- lubridate::ymd(Last_Date)
-    Num_Mismatch <- as.numeric(Num_Mismatch)
-    CountThreshold <- as.numeric(CountThreshold)
-    FilterThreshold <- as.numeric(FilterThreshold)
-    SelectedSpeciesList <- as.character(SpeciesList)
-    Project_ID <- as.character(ProjectID)
   },
   error = function(e) {
     process_error(e)
@@ -98,33 +100,30 @@ tryCatch(
     filename <- paste("PresenceByTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
-    #Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
-    # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
     system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
-    #
+    
+    # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     filename <- paste("PresenceBySite_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
-    #Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
-    # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
-    #
+    
+    # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     filename <- paste("PresenceBySiteAndTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
-    #Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
-    # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
     system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
-    #
+
+    # Output a blank filtered taxonomy table as a default.  This gets overwritten is actual material exists.
     filename <- paste("FilteredTaxonomy_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".csv",sep="_")
     filename <- gsub("_.csv",".csv",filename)
     filename <- tolower(filename)
@@ -158,6 +157,10 @@ tryCatch(
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
+    if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
+      stop("Error: Sample data frame is empty. Cannot proceed.")
+    }
+    print(paste("Metadata",nrow(Metadata),ncol(Metadata)))
     
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
@@ -177,6 +180,7 @@ tryCatch(
       filter(n() > CountThreshold) %>%
       select(SampleID, kingdom, phylum, class, order, family, genus, species)
     TronkoDB <- as.data.frame(TronkoInput)
+    print(paste("TronkoDB",nrow(TronkoDB),ncol(TronkoDB)))
     if (SelectedSpeciesList != "None") {
       TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name, ]
     }
@@ -184,7 +188,12 @@ tryCatch(
       TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
     }
     system(paste("rm ",TronkoFile_tmp,sep=""))
-    system("rm ",SubsetFile,sep="")
+    system(paste("rm ",SubsetFile,sep=""))
+    print(paste("TronkoDB",nrow(TronkoDB),ncol(TronkoDB)))
+    if(nrow(TronkoDB) == 0 || ncol(TronkoDB) == 0) {
+      stop("Error: Sample data frame is empty. Cannot proceed.")
+    }
+    print(paste("TronkoDB",nrow(TronkoDB),ncol(TronkoDB)))
     
     #Read in Taxonomy output and filter it.
     TaxonomyInput <- tbl(con,"Taxonomy")
@@ -203,10 +212,12 @@ tryCatch(
                                            "https://images.phylopic.org/images/1edff864-c53b-492b-a0cf-f6fe816815a8/raster/1536x1282.png",
                                            "https://images.phylopic.org/images/4924b6bd-cfb8-4d60-a32a-442d02afbe85/raster/1460x1536.png"))
     }
+    TaxonomyDB <- TaxonomyDB[!duplicated(TaxonomyDB),]
     sapply(dbListConnections(Database_Driver), dbDisconnect)
     
     #Merge Tronko output with sample metadata
     ProjectDB <- dplyr::left_join(TronkoDB,Metadata,by=c("SampleID"="fastqid"))
+    print(paste("ProjectDB",nrow(ProjectDB),ncol(ProjectDB)))
     #Get project duration
     Duration <- abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="days"))
     #Get day of year
@@ -228,6 +239,9 @@ tryCatch(
         dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
       TronkoDB <- as.data.frame(TronkoDB) 
       num_filteredSamples <- length(unique(TronkoDB$SampleID))
+    }
+    if(nrow(TronkoDB)==0){
+      num_filteredSamples <- 0
     }
     
     # Generate the number of samples and number of samples post-filtering as a return object,
@@ -280,7 +294,7 @@ tryCatch(
     #Export taxa presence by time.
     ProjectDB_byTime <- as.data.frame(ProjectDB_byTime)
     #Merge in taxonomy data.
-    ProjectDB_byTime <- dplyr::left_join(ProjectDB_byTime,TaxonomyDB)
+    ProjectDB_byTime <- dplyr::left_join(ProjectDB_byTime,TaxonomyDB,relationship = "many-to-many")
     if (TaxonomicRank != "kingdom") {
       colnames(ProjectDB_byTime)[which(names(ProjectDB_byTime) == TaxonomicRank)] <- "Latin_Name"
     }
@@ -302,7 +316,7 @@ tryCatch(
     #Export taxa presence by site.
     ProjectDB_bySite <- as.data.frame(ProjectDB_bySite)
     #Merge in taxonomy data.
-    ProjectDB_bySite <- dplyr::left_join(ProjectDB_bySite,TaxonomyDB)
+    ProjectDB_bySite <- dplyr::left_join(ProjectDB_bySite,TaxonomyDB,relationship = "many-to-many")
     if (TaxonomicRank != "kingdom") {
       colnames(ProjectDB_bySite)[which(names(ProjectDB_bySite) == TaxonomicRank)] <- "Latin_Name"
     }
@@ -354,7 +368,7 @@ tryCatch(
     #Export taxa presence by time.
     ProjectDB_bySiteTime <- as.data.frame(ProjectDB_bySiteTime)
     #Merge in taxonomy data.
-    ProjectDB_bySiteTime <- dplyr::left_join(ProjectDB_bySiteTime,TaxonomyDB)
+    ProjectDB_bySiteTime <- dplyr::left_join(ProjectDB_bySiteTime,TaxonomyDB,relationship = "many-to-many")
     #Merge in taxonomy data.
     if (TaxonomicRank != "kingdom") {
       colnames(ProjectDB_bySiteTime)[which(names(ProjectDB_bySiteTime) == TaxonomicRank)] <- "Latin_Name"
