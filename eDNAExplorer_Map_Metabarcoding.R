@@ -17,7 +17,7 @@ require(uuid)
 ProjectID <- args[1]
 
 # Write error output to our json file.
-process_error <- function(e) {
+process_error <- function(e, filename = "error.json") {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
   json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
