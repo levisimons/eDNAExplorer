@@ -115,6 +115,15 @@ tryCatch(
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
+    filename <- paste("PresenceBySample_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
+    filename <- gsub("_.json",".json",filename)
+    filename <- tolower(filename)
+    data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
+    write(toJSON(data_to_write), filename)
+    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("rm ",filename,sep=""))
+    
+    # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     filename <- paste("PresenceBySiteAndTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
@@ -301,10 +310,43 @@ tryCatch(
     if (TaxonomicRank == "kingdom") {
       ProjectDB_byTime$Latin_Name <- ProjectDB_byTime$kingdom
     }
+    #Store date range information
+    unique_dates <- unique(ProjectDB_byTime$date_range)
+    # Convert to a wide data frame.
+    ProjectDB_byTime <- tidyr::pivot_wider(ProjectDB_byTime[c("Latin_Name","Common_Name","Image_URL","date_range","freq")], names_from = date_range, values_from = freq, values_fill = 0)
+    ProjectDB_byTime <- as.data.frame(ProjectDB_byTime)
+    #Convert NA values for image URLs to the default Phylopic image.
+    ProjectDB_byTime["Image_URL"][is.na(ProjectDB_byTime["Image_URL"])] <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
+    #Convert missing common names to blanks.
+    ProjectDB_byTime["Common_Name"][is.na(ProjectDB_byTime["Common_Name"])] <- " "
     filename <- paste("PresenceByTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
-    datasets <- list(datasets = list(results = ProjectDB_byTime, metadata = SampleDB))
+    # Convert data set to JSON object.
+    json_list <- list()
+    # Iterate through rows of the data frame
+    df <- ProjectDB_byTime
+    for (i in 1:nrow(df)){
+      Latin_Name <- df[i,"Latin_Name"]
+      Common_Name <- df[i,"Common_Name"]
+      Image_URL <- df[i,"Image_URL"]
+      # Create a list for the SampleID and Presence values
+      sample_data <- list()
+      for(unique_date in unique_dates){
+        freq <- df[i, unique_date]
+        sample_data[[unique_date]] <- freq
+      }
+      # Create the JSON object for the current row
+      json_obj <- list(
+        Latin_Name = latin_name,
+        Common_Name = common_name,
+        Image_URL = image_url,
+        Date_Range = sample_data
+      )
+      # Append the JSON object to the list
+      json_list[[i]] <- json_obj
+    }
+    datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
     write(toJSON(datasets), filename)
     system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
@@ -323,10 +365,108 @@ tryCatch(
     if (TaxonomicRank == "kingdom") {
       ProjectDB_bySite$Latin_Name <- ProjectDB_bySite$kingdom
     }
+    #Convert NA values for image URLs to the default Phylopic image.
+    ProjectDB_bySite["Image_URL"][is.na(ProjectDB_bySite["Image_URL"])] <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
+    #Convert missing common names to blanks.
+    ProjectDB_bySite["Common_Name"][is.na(ProjectDB_bySite["Common_Name"])] <- " "
+    # Get unique sites.
+    unique_sites <- unique(ProjectDBby_Site$site)
+    # Convert to a wide data frame.
+    ProjectDB_bySite <- tidyr::pivot_wider(ProjectDB_bySite, names_from = site, values_from = freq, values_fill = 0)
+    ProjectDB_bySite <- as.data.frame(ProjectDB_bySite)
+    # Convert data set to JSON object.
+    json_list <- list()
+    # Iterate through rows of the data frame
+    df <- ProjectDB_bySite
+    for (i in 1:nrow(df)){
+      Latin_Name <- df[i,"Latin_Name"]
+      Common_Name <- df[i,"Common_Name"]
+      Image_URL <- df[i,"Image_URL"]
+      # Create a list for the SampleID and Presence values
+      sample_data <- list()
+      for(unique_site in unique_sites){
+        freq <- df[i, unique_site]
+        sample_data[[unique_site]] <- freq
+      }
+      # Create the JSON object for the current row
+      json_obj <- list(
+        Latin_Name = latin_name,
+        Common_Name = common_name,
+        Image_URL = image_url,
+        Site = sample_data
+      )
+      # Append the JSON object to the list
+      json_list[[i]] <- json_obj
+    }
     filename <- paste("PresenceBySite_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
-    datasets <- list(datasets = list(results = ProjectDB_bySite, metadata = SampleDB))
+    datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
+    write(toJSON(datasets), filename)
+    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("rm ",filename,sep=""))
+    
+    #Find taxa presence/absence by sample.
+    ProjectDB_bySample <- ProjectDB[,c(TaxonomicRank,"SampleID")]
+    ProjectDB_bySample <- ProjectDB_bySample[!duplicated(ProjectDB_bySample),]
+    ProjectDB_bySample <- ProjectDB_bySample[!is.na(ProjectDB_bySample[,TaxonomicRank]),]
+    colnames(ProjectDB_bySample) <- c("taxa","SampleID")
+    ProjectDB_bySample$Presence <- 1
+    # Create a reference data frame with all possible combinations of taxa and samples.
+    all_combinations <- expand.grid(
+      taxa = na.omit(unique(ProjectDB_bySample$taxa)),
+      SampleID = unique(ProjectDB_bySample$SampleID)
+    )
+    # Merge the original data frame with the reference data frame
+    ProjectDB_bySample <- merge(all_combinations, ProjectDB_bySample, by = c("taxa", "SampleID"), all.x = TRUE)
+    #Convert NA values to 0 in Presence.
+    ProjectDB_bySample["Presence"][is.na(ProjectDB_bySample["Presence"])] <- 0
+    # Convert to a presence/absence data frame.
+    ProjectDB_bySample <- tidyr::pivot_wider(ProjectDB_bySample, names_from = SampleID, values_from = Presence, values_fill = 0)
+    ProjectDB_bySample <- as.data.frame(ProjectDB_bySample)
+    #Re-insert taxonomic rank.
+    colnames(ProjectDB_bySample)[which(names(ProjectDB_bySample) == "taxa")] <- TaxonomicRank
+    #Merge in taxonomy data.
+    ProjectDB_bySample <- dplyr::left_join(ProjectDB_bySample,TaxonomyDB,relationship = "many-to-many")
+    if (TaxonomicRank != "kingdom") {
+      colnames(ProjectDB_bySample)[which(names(ProjectDB_bySample) == TaxonomicRank)] <- "Latin_Name"
+    }
+    if (TaxonomicRank == "kingdom") {
+      ProjectDB_bySample$Latin_Name <- ProjectDB_bySample$kingdom
+    }
+    #Convert NA values for image URLs to the default Phylopic image.
+    ProjectDB_bySample["Image_URL"][is.na(ProjectDB_bySample["Image_URL"])] <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
+    #Convert missing common names to blanks.
+    ProjectDB_bySample["Common_Name"][is.na(ProjectDB_bySample["Common_Name"])] <- " "
+    filename <- paste("PresenceBySample_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
+    filename <- gsub("_.json",".json",filename)
+    filename <- tolower(filename)
+    # Convert data set to JSON object.
+    json_list <- list()
+    # Iterate through rows of the data frame
+    df <- ProjectDB_bySample
+    for (i in 1:nrow(df)){
+      Latin_Name <- df[i,"Latin_Name"]
+      Common_Name <- df[i,"Common_Name"]
+      Image_URL <- df[i,"Image_URL"]
+      # Create a list for the SampleID and Presence values
+      sample_data <- list()
+      unique_samples <- unique(ProjectDB$SampleID)
+      for(unique_sample in unique_samples){
+        presence <- df[i, unique_sample]
+        sample_data[[unique_sample]] <- presence
+      }
+      # Create the JSON object for the current row
+      json_obj <- list(
+        Latin_Name = latin_name,
+        Common_Name = common_name,
+        Image_URL = image_url,
+        SampleID = sample_data
+      )
+      # Append the JSON object to the list
+      json_list[[i]] <- json_obj
+    }
+    datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
     write(toJSON(datasets), filename)
     system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
@@ -376,10 +516,48 @@ tryCatch(
     if (TaxonomicRank == "kingdom") {
       ProjectDB_bySiteTime$Latin_Name <- ProjectDB_bySiteTime$kingdom
     }
+    #Convert NA values for image URLs to the default Phylopic image.
+    ProjectDB_bySiteTime["Image_URL"][is.na(ProjectDB_bySiteTime["Image_URL"])] <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
+    #Convert missing common names to blanks.
+    ProjectDB_bySiteTime["Common_Name"][is.na(ProjectDB_bySiteTime["Common_Name"])] <- " "
+    # Get unique sites.
+    unique_sites <- unique(ProjectDB_bySiteTime$site)
+    # Get unique date ranges.
+    unique_dates <- unique(ProjectDB_bySiteTime$date_range)
+    # Convert to a wide data frame.
+    ProjectDB_bySiteTime <- tidyr::pivot_wider(ProjectDB_bySiteTime[,c("site","Latin_Name","freq","date_range","Common_Name","Image_URL")], names_from = site, values_from = freq, values_fill = 0)
+    ProjectDB_bySiteTime <- as.data.frame(ProjectDB_bySiteTime)
     filename <- paste("PresenceBySiteAndTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
-    datasets <- list(datasets = list(results = ProjectDB_bySiteTime, metadata = SampleDB))
+    # Convert data set to JSON object.
+    json_list <- list()
+    # Iterate through rows of the data frame
+    df <- ProjectDB_bySiteTime
+    for (i in 1:nrow(df)){
+      Latin_Name <- df[i,"Latin_Name"]
+      Common_Name <- df[i,"Common_Name"]
+      Image_URL <- df[i,"Image_URL"]
+      Date_Range <- df[i,"date_range"]
+      # Create a list for the site/date/frequency values
+      sample_data <- list()
+      for(unique_site in unique_sites){
+        freq <- df[i, unique_site]
+        sample_data[[unique_site]] <- freq
+      }
+      # Create the JSON object for the current row
+      json_obj <- list(
+        Latin_Name = latin_name,
+        Common_Name = common_name,
+        Image_URL = image_url,
+        Date_Range = Date_Range,
+        Site = sample_data
+      )
+      # Append the JSON object to the list
+      json_list[[i]] <- json_obj
+    }
+    
+    datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
     write(toJSON(datasets), filename)
     system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
