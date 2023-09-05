@@ -79,6 +79,9 @@ tryCatch(
     #Find metabarcoding project data file and read it into a dataframe.
     Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/projects",ProjectID,"METABARCODING.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
     Project_Data <- gsub("[\r\n]", "", Project_Data)
+    if(length(Project_Data)==0) {
+      stop("Error: No initial metadata present.")
+    }
     Project_Data <- read.table(text = Project_Data,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
     names(Project_Data) <- gsub(x = names(Project_Data), pattern = "ForwardPS", replacement = "Forward PS")
     names(Project_Data) <- gsub(x = names(Project_Data), pattern = "ReversePS", replacement = "Reverse PS")
@@ -92,11 +95,14 @@ tryCatch(
     Project_Data <- as.data.frame(Project_Data)
     Metadata_Initial <- Project_Data
     
-    Required_Variables <- c("Site","Sample ID","Sample Type","Longitude","Latitude","Sample Date","Sequencing Platform","Spatial Uncertainty","Sequence Length","Fastq Forward Reads Filename","Fastq Reverse Reads Filename",grep("^Marker [[:digit:]]$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Forward PS$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Reverse PS$",colnames(Metadata_Initial),value=T))
+    Required_Variables <- c("Site","Sample ID","Sample Type","Longitude","Latitude","Sample Date","Sequencing Platform","Spatial Uncertainty","Sequence Length","Adapter type","Fastq Forward Reads Filename","Fastq Reverse Reads Filename",grep("^Marker [[:digit:]]$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Forward PS$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Reverse PS$",colnames(Metadata_Initial),value=T))
     #Get field variables from initial metadata.  These are generally project-specific non-required variables.
     Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% Required_Variables)]
     #Read in extracted metadata.
     Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput_Metabarcoding.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    if(length(Metadata_Extracted)==0) {
+      stop("Error: No extracted metadata present.")
+    }
     Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
     Metadata_Extracted$Sample_Date <- lubridate::ymd_hms(Metadata_Extracted$Sample_Date)
     Metadata_Extracted$Sample_Date <- as.Date(as.character(as.POSIXct(Metadata_Extracted$Sample_Date)))
@@ -144,10 +150,10 @@ tryCatch(
     
     #Match metadata column names to format in SQL database.
     colnames(Metadata) <- gsub(" ","_",tolower(colnames(Metadata)))
-
+    
     #Set character and numeric columns.
-    col_non_numeric <- c("name","biome_type","eco_name","fastq_forward_reads_filename","fastqid","fastq_reverse_reads_filename",
-                  "grtgroup","hybas_id","marker_1","nation","projectid","realm","sample_date","sample_id","sample_type","sequencing_platform",
+    col_non_numeric <- c("adapter_type","name","biome_type","eco_name","fastq_forward_reads_filename","fastqid","fastq_reverse_reads_filename",
+                         "grtgroup","hybas_id","marker_1","nation","projectid","realm","sample_date","sample_id","sample_type","sequencing_platform",
                          "site","state","desig_eng","gov_type","iucn_cat","uniqueid","marker_1_forward_ps","marker_1_reverse_ps","landform",
                          "wdpa_pid","marker_10","marker_10_forward_ps","marker_10_reverse_ps","marker_2","marker_2_forward_ps","marker_2_reverse_ps",
                          "marker_3","marker_3_forward_ps","marker_3_reverse_ps","marker_4","marker_4_forward_ps","marker_4_reverse_ps","marker_5",
