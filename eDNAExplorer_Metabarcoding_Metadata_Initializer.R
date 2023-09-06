@@ -95,7 +95,7 @@ tryCatch(
     Project_Data <- as.data.frame(Project_Data)
     Metadata_Initial <- Project_Data
     
-    Required_Variables <- c("Site","Sample ID","Sample Type","Longitude","Latitude","Sample Date","Sequencing Platform","Spatial Uncertainty","Sequence Length","Adapter type","Fastq Forward Reads Filename","Fastq Reverse Reads Filename",grep("^Marker [[:digit:]]$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Forward PS$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Reverse PS$",colnames(Metadata_Initial),value=T))
+    Required_Variables <- c("Site","Sample ID","Sample Type","Longitude","Latitude","Sample Date","Sequencing Platform","Sequence Length","Adapter type","Fastq Forward Reads Filename","Fastq Reverse Reads Filename",grep("^Marker [[:digit:]]$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Forward PS$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Reverse PS$",colnames(Metadata_Initial),value=T))
     #Get field variables from initial metadata.  These are generally project-specific non-required variables.
     Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% Required_Variables)]
     #Read in extracted metadata.
@@ -111,7 +111,7 @@ tryCatch(
     Metadata_Extracted[Metadata_Extracted==-32768] <- NA
     
     #Merge metadata
-    Metadata <- dplyr::left_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"),na_matches="never")
+    Metadata <- dplyr::left_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude"),na_matches="never")
     
     #Add project ID
     Metadata$ProjectID <- ProjectID
