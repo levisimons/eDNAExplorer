@@ -78,15 +78,16 @@ tryCatch(
   {
     #Find metabarcoding project data file and read it into a dataframe.
     Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/projects",ProjectID,"METABARCODING.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
-    Project_Data <- gsub("[\r\n]", "", Project_Data)
+    #Project_Data <- gsub("[\r\n]", "", Project_Data)
     if(length(Project_Data)==0) {
       stop("Error: No initial metadata present.")
     }
-    Project_Data <- read.table(text = Project_Data,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+    Project_Data <- read.table(text = Project_Data,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A","n/a","na"))
+    Project_Data <- Project_Data[complete.cases(Project_Data[,c("Sample ID","Sample Date","Latitude","Longitude")]),]
     names(Project_Data) <- gsub(x = names(Project_Data), pattern = "ForwardPS", replacement = "Forward PS")
     names(Project_Data) <- gsub(x = names(Project_Data), pattern = "ReversePS", replacement = "Reverse PS")
-    addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
-    Project_Data$`Sample Date` <- as.Date(as.character(parse_date_time(Project_Data$`Sample Date`, orders = c("ymd", "dmy", "mdy"))))
+    Project_Data$`Sample Date` <- as.Date(as.character(parse_date_time(Project_Data$`Sample Date`, orders = c("ymd","mdy","dmy"))))
+    lubridate::ymd(Project_Data$`Sample Date`)
     Project_Data$`Data type` <- NULL
     Project_Data$`Additional environmental metadata....` <- NULL
     #Remove zero length variable names
@@ -95,7 +96,7 @@ tryCatch(
     Project_Data <- as.data.frame(Project_Data)
     Metadata_Initial <- Project_Data
     
-    Required_Variables <- c("Site","Sample ID","Sample Type","Longitude","Latitude","Sample Date","Sequencing Platform","Sequence Length","Adapter type","Fastq Forward Reads Filename","Fastq Reverse Reads Filename",grep("^Marker [[:digit:]]$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Forward PS$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Reverse PS$",colnames(Metadata_Initial),value=T))
+    Required_Variables <- c("Site","Sample ID","Sample Type","Longitude","Latitude","Sample Date","Sequencing Platform","Sequence Length","Adapter Type","Fastq Forward Reads Filename","Fastq Reverse Reads Filename",grep("^Marker [[:digit:]]$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Forward PS$",colnames(Metadata_Initial),value=T),grep("^Marker [[:digit:]] Reverse PS$",colnames(Metadata_Initial),value=T))
     #Get field variables from initial metadata.  These are generally project-specific non-required variables.
     Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% Required_Variables)]
     #Read in extracted metadata.
@@ -103,7 +104,7 @@ tryCatch(
     if(length(Metadata_Extracted)==0) {
       stop("Error: No extracted metadata present.")
     }
-    Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+    Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A","n/a","na"))
     Metadata_Extracted$Sample_Date <- lubridate::ymd_hms(Metadata_Extracted$Sample_Date)
     Metadata_Extracted$Sample_Date <- as.Date(as.character(as.POSIXct(Metadata_Extracted$Sample_Date)))
     #Set no data results.
@@ -111,7 +112,7 @@ tryCatch(
     Metadata_Extracted[Metadata_Extracted==-32768] <- NA
     
     #Merge metadata
-    Metadata <- dplyr::left_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude"),na_matches="never")
+    Metadata <- dplyr::right_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude"),na_matches="never")
     
     #Add project ID
     Metadata$ProjectID <- ProjectID
@@ -165,6 +166,9 @@ tryCatch(
     
     #Create Metadata database.
     con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
+    
+    #Clear old metadata entries.
+    dbExecute(con,paste('DELETE FROM "TronkoMetadata" WHERE "projectid" = \'',ProjectID,'\'',sep=""))
     
     #Check for redundant data.
     #Add new metadata.
