@@ -131,7 +131,7 @@ tryCatch(
     write(toJSON(data_to_write), filename)
     system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
-
+    
     # Output a blank filtered taxonomy table as a default.  This gets overwritten is actual material exists.
     filename <- paste("FilteredTaxonomy_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".csv",sep="_")
     filename <- gsub("_.csv",".csv",filename)
@@ -263,43 +263,11 @@ tryCatch(
     #Filter merged data.
     ProjectDB <- dplyr::inner_join(TronkoDB,ProjectDB,multiple="all")
     
-    #Get start time of merged data.
-    StartTime <- as.Date(paste(year(min(ProjectDB$sample_date)), 1, 1, sep = "-"))
-    
     #Aggregate merged data by the appropriate time interval to find taxa presence by time.
-    if(as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="days"))) <= 7){
-      ProjectDB_byTime <- ProjectDB %>% dplyr::distinct(site,SampleID,day,!!sym(TaxonomicRank),.keep_all=T) %>% 
-        dplyr::group_by(day,!!sym(TaxonomicRank)) %>% 
-        dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
-      ProjectDB_byTime$date_range <- paste(StartTime+days(ProjectDB_byTime$day)-days(1),"to",StartTime+days(ProjectDB_byTime$day))
-    }
-    if(as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) > 1 &
-       as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) <= 4){
-      ProjectDB_byTime <- ProjectDB %>% dplyr::distinct(site,SampleID,week,!!sym(TaxonomicRank),.keep_all=T) %>% 
-        dplyr::group_by(week,!!sym(TaxonomicRank)) %>% 
-        dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
-      ProjectDB_byTime$date_range <- paste(StartTime+weeks(ProjectDB_byTime$week)-weeks(1),"to",StartTime+weeks(ProjectDB_byTime$week))
-    }
-    if(as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) > 4 &
-       as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) <= 13){
-      ProjectDB_byTime <- ProjectDB %>% dplyr::distinct(site,SampleID,month,!!sym(TaxonomicRank),.keep_all=T) %>% 
-        dplyr::group_by(month,!!sym(TaxonomicRank)) %>% 
-        dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
-      ProjectDB_byTime$date_range <- paste(StartTime+months(ProjectDB_byTime$month)-months(1),"to",StartTime+months(ProjectDB_byTime$month))
-    }
-    if(as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) > 13 &
-       as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) <= 52){
-      ProjectDB_byTime <- ProjectDB %>% dplyr::distinct(site,SampleID,quarter,!!sym(TaxonomicRank),.keep_all=T) %>% 
-        dplyr::group_by(quarter,!!sym(TaxonomicRank)) %>% 
-        dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
-      ProjectDB_byTime$date_range <- paste(as.Date(as.yearqtr(paste(ProjectDB_byTime$quarter,year(StartTime)), format = "Q%q %Y")),"to",as.Date(as.yearqtr(paste(ProjectDB_byTime$quarter,year(StartTime)), format = "Q%q %Y"))+months(3))
-    }
-    if(as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) > 52){
-      ProjectDB_byTime <- ProjectDB %>% dplyr::distinct(site,SampleID,year,!!sym(TaxonomicRank),.keep_all=T) %>% 
-        dplyr::group_by(year,!!sym(TaxonomicRank)) %>% 
-        dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
-      ProjectDB_byTime$date_range <- paste(ProjectDB_byTime$year,"to",ProjectDB_byTime$year+1)
-    }
+    ProjectDB_byTime <- ProjectDB %>% dplyr::distinct(site,SampleID,sample_date,!!sym(TaxonomicRank),.keep_all=T) %>% 
+      dplyr::group_by(sample_date,!!sym(TaxonomicRank)) %>% 
+      dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
+    
     #Export taxa presence by time.
     ProjectDB_byTime <- as.data.frame(ProjectDB_byTime)
     #Merge in taxonomy data.
@@ -311,9 +279,9 @@ tryCatch(
       ProjectDB_byTime$Latin_Name <- ProjectDB_byTime$kingdom
     }
     #Store date range information
-    unique_dates <- unique(ProjectDB_byTime$date_range)
+    unique_dates <- unique(as.character(ProjectDB_byTime$sample_date))
     # Convert to a wide data frame.
-    ProjectDB_byTime <- tidyr::pivot_wider(ProjectDB_byTime[c("Latin_Name","Common_Name","Image_URL","date_range","freq")], names_from = date_range, values_from = freq, values_fill = 0)
+    ProjectDB_byTime <- tidyr::pivot_wider(ProjectDB_byTime[c("Latin_Name","Common_Name","Image_URL","sample_date","freq")], names_from = sample_date, values_from = freq, values_fill = 0)
     ProjectDB_byTime <- as.data.frame(ProjectDB_byTime)
     #Convert NA values for image URLs to the default Phylopic image.
     ProjectDB_byTime["Image_URL"][is.na(ProjectDB_byTime["Image_URL"])] <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
@@ -330,7 +298,7 @@ tryCatch(
       Latin_Name <- df[i,"Latin_Name"]
       Common_Name <- df[i,"Common_Name"]
       Image_URL <- df[i,"Image_URL"]
-      # Create a list for the SampleID and Presence values
+      # Create a list for the date ranges and Presence values
       sample_data <- list()
       for(unique_date in unique_dates){
         freq <- df[i, unique_date]
@@ -338,10 +306,10 @@ tryCatch(
       }
       # Create the JSON object for the current row
       json_obj <- list(
-        Latin_Name = latin_name,
-        Common_Name = common_name,
-        Image_URL = image_url,
-        Date_Range = sample_data
+        latin_name = Latin_Name,
+        common_name = Common_Name,
+        image_url = Image_URL,
+        Sample_Date = sample_data
       )
       # Append the JSON object to the list
       json_list[[i]] <- json_obj
@@ -357,6 +325,8 @@ tryCatch(
       dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
     #Export taxa presence by site.
     ProjectDB_bySite <- as.data.frame(ProjectDB_bySite)
+    # Get unique sites.
+    unique_sites <- unique(ProjectDB_bySite$site)
     #Merge in taxonomy data.
     ProjectDB_bySite <- dplyr::left_join(ProjectDB_bySite,TaxonomyDB,relationship = "many-to-many")
     if (TaxonomicRank != "kingdom") {
@@ -369,8 +339,6 @@ tryCatch(
     ProjectDB_bySite["Image_URL"][is.na(ProjectDB_bySite["Image_URL"])] <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
     #Convert missing common names to blanks.
     ProjectDB_bySite["Common_Name"][is.na(ProjectDB_bySite["Common_Name"])] <- " "
-    # Get unique sites.
-    unique_sites <- unique(ProjectDBby_Site$site)
     # Convert to a wide data frame.
     ProjectDB_bySite <- tidyr::pivot_wider(ProjectDB_bySite, names_from = site, values_from = freq, values_fill = 0)
     ProjectDB_bySite <- as.data.frame(ProjectDB_bySite)
@@ -382,7 +350,7 @@ tryCatch(
       Latin_Name <- df[i,"Latin_Name"]
       Common_Name <- df[i,"Common_Name"]
       Image_URL <- df[i,"Image_URL"]
-      # Create a list for the SampleID and Presence values
+      # Create a list for the Site and Presence values
       sample_data <- list()
       for(unique_site in unique_sites){
         freq <- df[i, unique_site]
@@ -390,9 +358,9 @@ tryCatch(
       }
       # Create the JSON object for the current row
       json_obj <- list(
-        Latin_Name = latin_name,
-        Common_Name = common_name,
-        Image_URL = image_url,
+        latin_name= Latin_Name,
+        common_name = Common_Name,
+        image_url = Image_URL,
         Site = sample_data
       )
       # Append the JSON object to the list
@@ -412,6 +380,8 @@ tryCatch(
     ProjectDB_bySample <- ProjectDB_bySample[!is.na(ProjectDB_bySample[,TaxonomicRank]),]
     colnames(ProjectDB_bySample) <- c("taxa","SampleID")
     ProjectDB_bySample$Presence <- 1
+    #Get sample names.
+    unique_samples <- unique(ProjectDB$SampleID)
     # Create a reference data frame with all possible combinations of taxa and samples.
     all_combinations <- expand.grid(
       taxa = na.omit(unique(ProjectDB_bySample$taxa)),
@@ -451,16 +421,15 @@ tryCatch(
       Image_URL <- df[i,"Image_URL"]
       # Create a list for the SampleID and Presence values
       sample_data <- list()
-      unique_samples <- unique(ProjectDB$SampleID)
       for(unique_sample in unique_samples){
         presence <- df[i, unique_sample]
         sample_data[[unique_sample]] <- presence
       }
       # Create the JSON object for the current row
       json_obj <- list(
-        Latin_Name = latin_name,
-        Common_Name = common_name,
-        Image_URL = image_url,
+        latin_name = Latin_Name,
+        common_name = Common_Name,
+        image_url = Image_URL,
         SampleID = sample_data
       )
       # Append the JSON object to the list
@@ -472,39 +441,10 @@ tryCatch(
     system(paste("rm ",filename,sep=""))
     
     #Aggregate merged data by the appropriate time interval to find taxa presence by time.
-    if(as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="days"))) <= 7){
-      ProjectDB_bySiteTime <- ProjectDB %>% dplyr::distinct(site,SampleID,day,!!sym(TaxonomicRank),.keep_all=T) %>% 
-        dplyr::group_by(site,day,!!sym(TaxonomicRank)) %>% 
-        dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
-      ProjectDB_bySiteTime$date_range <- paste(StartTime+days(ProjectDB_bySiteTime$day)-days(1),"to",StartTime+days(ProjectDB_bySiteTime$day))
-    }
-    if(as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) > 1 &
-       as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) <= 4){
-      ProjectDB_bySiteTime <- ProjectDB %>% dplyr::distinct(site,SampleID,week,!!sym(TaxonomicRank),.keep_all=T) %>% 
-        dplyr::group_by(site,week,!!sym(TaxonomicRank)) %>% 
-        dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
-      ProjectDB_bySiteTime$date_range <- paste(StartTime+weeks(ProjectDB_bySiteTime$week)-weeks(1),"to",StartTime+weeks(ProjectDB_bySiteTime$week))
-    }
-    if(as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) > 4 &
-       as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) <= 13){
-      ProjectDB_bySiteTime <- ProjectDB %>% dplyr::distinct(site,SampleID,month,!!sym(TaxonomicRank),.keep_all=T) %>% 
-        dplyr::group_by(site,month,!!sym(TaxonomicRank)) %>% 
-        dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
-      ProjectDB_bySiteTime$date_range <- paste(StartTime+months(ProjectDB_bySiteTime$month)-months(1),"to",StartTime+months(ProjectDB_bySiteTime$month))
-    }
-    if(as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) > 13 &
-       as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) <= 52){
-      ProjectDB_bySiteTime <- ProjectDB %>% dplyr::distinct(site,SampleID,quarter,!!sym(TaxonomicRank),.keep_all=T) %>% 
-        dplyr::group_by(site,quarter,!!sym(TaxonomicRank)) %>% 
-        dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
-      ProjectDB_bySiteTime$date_range <- paste(as.Date(as.yearqtr(paste(ProjectDB_bySiteTime$quarter,year(StartTime)), format = "Q%q %Y")),"to",as.Date(as.yearqtr(paste(ProjectDB_bySiteTime$quarter,year(StartTime)), format = "Q%q %Y"))+months(3))
-    }
-    if(as.numeric(abs(difftime(range(ProjectDB$sample_date)[1],range(ProjectDB$sample_date)[2],units="weeks"))) > 52){
-      ProjectDB_bySiteTime <- ProjectDB %>% dplyr::distinct(site,SampleID,year,!!sym(TaxonomicRank),.keep_all=T) %>% 
-        dplyr::group_by(site,year,!!sym(TaxonomicRank)) %>% 
-        dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
-      ProjectDB_bySiteTime$date_range <- paste(ProjectDB_bySiteTime$year,"to",ProjectDB_bySiteTime$year+1)
-    }
+    ProjectDB_bySiteTime <- ProjectDB %>% dplyr::distinct(site,SampleID,sample_date,!!sym(TaxonomicRank),.keep_all=T) %>% 
+      dplyr::group_by(site,sample_date,!!sym(TaxonomicRank)) %>% 
+      dplyr::summarise(n=n_distinct(SampleID)) %>% dplyr::mutate(freq=n/max(n)) %>% select(-n)
+    
     #Export taxa presence by time.
     ProjectDB_bySiteTime <- as.data.frame(ProjectDB_bySiteTime)
     #Merge in taxonomy data.
@@ -523,9 +463,9 @@ tryCatch(
     # Get unique sites.
     unique_sites <- unique(ProjectDB_bySiteTime$site)
     # Get unique date ranges.
-    unique_dates <- unique(ProjectDB_bySiteTime$date_range)
+    unique_dates <- unique(as.character(ProjectDB_bySiteTime$sample_date))
     # Convert to a wide data frame.
-    ProjectDB_bySiteTime <- tidyr::pivot_wider(ProjectDB_bySiteTime[,c("site","Latin_Name","freq","date_range","Common_Name","Image_URL")], names_from = site, values_from = freq, values_fill = 0)
+    ProjectDB_bySiteTime <- tidyr::pivot_wider(ProjectDB_bySiteTime[,c("site","Latin_Name","freq","sample_date","Common_Name","Image_URL")], names_from = site, values_from = freq, values_fill = 0)
     ProjectDB_bySiteTime <- as.data.frame(ProjectDB_bySiteTime)
     filename <- paste("PresenceBySiteAndTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
@@ -538,7 +478,7 @@ tryCatch(
       Latin_Name <- df[i,"Latin_Name"]
       Common_Name <- df[i,"Common_Name"]
       Image_URL <- df[i,"Image_URL"]
-      Date_Range <- df[i,"date_range"]
+      Sample_Date <- df[i,"sample_date"]
       # Create a list for the site/date/frequency values
       sample_data <- list()
       for(unique_site in unique_sites){
@@ -547,10 +487,10 @@ tryCatch(
       }
       # Create the JSON object for the current row
       json_obj <- list(
-        Latin_Name = latin_name,
-        Common_Name = common_name,
-        Image_URL = image_url,
-        Date_Range = Date_Range,
+        latin_name = Latin_Name,
+        common_name = Common_Name,
+        image_url = Image_URL,
+        sample_date = Sample_Date,
         Site = sample_data
       )
       # Append the JSON object to the list
