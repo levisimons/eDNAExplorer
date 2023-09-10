@@ -79,6 +79,8 @@ tryCatch(
       ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
       FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
       TaxonomicRanks <- c("superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+      TaxonomicKeyRanks <- c("kingdomKey","phylumKey","classKey","orderKey","familyKey","genusKey","speciesKey")
+      TaxonomicNum <- which(TaxonomicRanks == TaxonomicRank)
       First_Date <- lubridate::ymd(First_Date)
       Last_Date <- lubridate::ymd(Last_Date)
       Num_Mismatch <- as.numeric(Num_Mismatch)
@@ -126,9 +128,9 @@ tryCatch(
     Metadata <- tbl(con, "TronkoMetadata")
     Keep_Vars <- c(CategoricalVariables, ContinuousVariables, FieldVars)[c(CategoricalVariables, ContinuousVariables, FieldVars) %in% dbListFields(con, "TronkoMetadata")]
     # Get the number of samples in a project before filtering.
-    tmp <- Metadata %>% filter(projectid == Project_ID)
-    tmp <- as.data.frame(tmp)
-    total_Samples <- nrow(tmp)
+    Metadata_Unfiltered <- Metadata %>% filter(projectid == Project_ID)
+    Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
+    total_Samples <- nrow(Metadata_Unfiltered)
     Metadata <- Metadata %>%
       filter(projectid == Project_ID) %>%
       filter(!is.na(latitude) & !is.na(longitude))
@@ -148,16 +150,31 @@ tryCatch(
     SubsetFile <- paste("subset_prevalence_",UUIDgenerate(),".csv",sep="")
     awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
     system(awk_command, intern = TRUE)
-    # Filter on the number of mismatches.  Remove entries with NA for mismatches and for the selected taxonomic rank.
     TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
+    #Remove samples with missing coordinates, and which are outside of the date filters.
+    TronkoInput <- TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
+    #Store the unfiltered reads.
+    Tronko_Unfiltered <- TronkoInput
+    # Calculate relative abundance of taxa with a given rank in the unfiltered reads.
+    Tronko_Unfiltered <- Tronko_Unfiltered %>%
+      dplyr::group_by(SampleID, !!sym(TaxonomicRank)) %>%
+      dplyr::summarise(n = n()) %>%
+      dplyr::mutate(freq = n / sum(n)) %>%
+      dplyr::ungroup() %>% select(-n)
+    #Filter on the number of reads per sample, then a mismatch threshold.
+    TronkoInput <- TronkoInput %>% group_by(SampleID) %>%
+      filter(n() > CountThreshold) %>% filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% select(-Mismatch)
+    #Merege relative abudance results into data filtered by reads per sample and mismatches.
+    #Then filtered on relative abundances.
     TronkoInput <- TronkoInput %>%
-      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>%
-      filter(!is.na(!!sym(TaxonomicRank))) %>%
-      group_by(SampleID) %>%
-      filter(n() > CountThreshold) %>%
-      select(SampleID, kingdom, phylum, class, order, family, genus, species)
+      left_join(Tronko_Unfiltered,na_matches="never") %>%
+      filter(freq >= FilterThreshold) %>% select(-freq)
     TronkoDB <- as.data.frame(TronkoInput)
+    #Remove taxa which are unknown at a given rank.
+    TronkoDB <- TronkoDB[,c("SampleID",TaxonomicRanks[1:TaxonomicNum])]
+    TronkoDB <- TronkoDB[!is.na(TronkoDB[, TaxonomicRank]), ]
+    #Filter results by species list.
     if (SelectedSpeciesList != "None") {
       TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name, ]
     }
@@ -176,14 +193,34 @@ tryCatch(
       TaxaList <- c()
     }
     if (TaxonomicRank != "kingdom") {
-      TaxonomicNum <- which(TaxonomicRanks == TaxonomicRank)
       TaxonomyInput <- TaxonomyInput %>%
-        filter(rank == TaxonomicRank) %>%
-        filter(Taxon %in% TaxaList) %>%
-        select(TaxonomicRanks[2:TaxonomicNum], Taxon, Common_Name, Image_URL)
+        filter(rank==TaxonomicRank) %>%
+        filter(!!sym(TaxonomicRank) %in% TaxaList) %>%
+        select(TaxonomicRanks[2:TaxonomicNum],TaxonomicKeyRanks,Common_Name,Image_URL)
+      TaxonomyDB <- as.data.frame(TaxonomyInput)
+      #Figure out which taxonomy version is more complete.
+      TaxonomyDB$rankCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicRanks]))
+      TaxonomyDB$rankKeyCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicKeyRanks]))
+      TaxonomyDB <- TaxonomyDB %>%
+        group_by(!!sym(TaxonomicRank)) %>%
+        slice_max(order_by = rankCount, n = 1) %>%
+        ungroup()
+      TaxonomyDB <- TaxonomyDB %>%
+        group_by(!!sym(TaxonomicRank)) %>%
+        slice_max(order_by = rankKeyCount, n = 1) %>%
+        ungroup()
+      #Figure out which common_name is most common per taxon.
+      TaxonomyDB <- TaxonomyDB %>%
+        group_by(!!sym(TaxonomicRank)) %>%
+        mutate(Most_Common_Name = ifelse(all(is.na(Common_Name)), NA, names(which.max(table(Common_Name[!is.na(Common_Name)]))))) %>%
+        ungroup()
+      TaxonomyDB$Common_Name <- TaxonomyDB$Most_Common_Name
+      TaxonomyDB$Most_Common_Name <- NULL
+      TaxonomyDB <- as.data.frame(TaxonomyDB)
+      TaxonomyDB <- subset(TaxonomyDB, select = -grep("Key", colnames(TaxonomyDB)))
+      TaxonomyDB$rankCount <- NULL
+      TaxonomyDB <- TaxonomyDB[!duplicated(TaxonomyDB),]
     }
-    TaxonomyDB <- as.data.frame(TaxonomyInput)
-    # colnames(TaxonomyDB) <- c(TaxonomicRank,"Common_Name","Image_URL")
     if (TaxonomicRank == "kingdom") {
       TaxonomyDB <- data.frame(
         kingdom = c("Fungi", "Plantae", "Animalia", "Bacteria", "Archaea", "Protista", "Monera", "Chromista"),
@@ -199,37 +236,41 @@ tryCatch(
         )
       )
     }
-    # Filter by relative abundance per taxon per sample.
-    if (nrow(TronkoDB) > 0) {
-      TronkoDB <- TronkoDB[!is.na(TronkoDB[, TaxonomicRank]), ]
-      TronkoDB <- TronkoDB %>%
-        dplyr::group_by(SampleID, !!sym(TaxonomicRank)) %>%
-        dplyr::summarise(n = n()) %>%
-        dplyr::mutate(freq = n / sum(n)) %>%
-        dplyr::ungroup() %>%
-        dplyr::filter(freq > FilterThreshold) %>%
-        select(-n, -freq)
+    
+    #Calculate prevalence of taxa per sample and output results for plotting.
+    if(nrow(TronkoDB) > 0){
       num_filteredSamples <- length(unique(TronkoDB$SampleID))
       TronkoDB <- TronkoDB %>%
         dplyr::group_by(!!sym(TaxonomicRank)) %>%
-        dplyr::summarise(per = n() / length(unique(TronkoDB$SampleID)))
+        dplyr::summarise(per = n_distinct(SampleID)/n_distinct(TronkoDB$SampleID))
       TronkoDB <- as.data.frame(TronkoDB)
-      TronkoDB <- dplyr::left_join(TronkoDB, TaxonomyDB)
+      #Merge in taxonomy data.
+      TronkoDB <- dplyr::left_join(TronkoDB, TaxonomyDB,na_matches="never")
+      TronkoDB$Image_URL <- ifelse(is.na(TronkoDB$Image_URL), 'https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png', TronkoDB$Image_URL)
+      "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
       if (TaxonomicRank != "kingdom") {
         colnames(TronkoDB)[which(names(TronkoDB) == TaxonomicRank)] <- "Latin_Name"
       }
       if (TaxonomicRank == "kingdom") {
         TronkoDB$Latin_Name <- TronkoDB$kingdom
       }
+      TronkoDB <- TronkoDB %>% mutate_all(~ifelse(is.na(.), " ", .))
+      #De-duplicated dataframe for tronko table.
+      TronkoDB <- TronkoDB[!duplicated(TronkoDB),]
+      
       # Insert the number of samples and number of samples post-filtering as a return object.
       SampleDB <- data.frame(matrix(ncol = 2, nrow = 1))
       colnames(SampleDB) <- c("totalSamples", "filteredSamples")
       SampleDB$totalSamples <- total_Samples
       SampleDB$filteredSamples <- num_filteredSamples
+      
       datasets <- list(datasets = list(results = TronkoDB, metadata = SampleDB))
       write(toJSON(datasets), filename)
       system(paste("aws s3 cp ", filename, " s3://ednaexplorer/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
       system(paste("rm ", filename, sep = ""))
+    }
+    if(nrow(TronkoDB) == 0){
+      stop("Error: Filters are too stringent. Cannot proceed.")
     }
     sapply(dbListConnections(Database_Driver), dbDisconnect)
   },
