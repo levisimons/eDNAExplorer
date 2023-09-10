@@ -101,6 +101,7 @@ tryCatch(
       ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
       FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
       TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
+      TaxonomicNum <<- as.numeric(which(TaxonomicRanks == sample_TaxonomicRank))
       
       #Save plot name.
       filename <- paste("Alpha_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",AlphaDiversityMetric,"SpeciesList",SelectedSpeciesList,".json",sep="_")
@@ -139,15 +140,18 @@ tryCatch(
     Metadata <- tbl(con, "TronkoMetadata")
     Keep_Vars <- c(CategoricalVariables, ContinuousVariables, FieldVars)[c(CategoricalVariables, ContinuousVariables, FieldVars) %in% dbListFields(con, "TronkoMetadata")]
     # Get the number of samples in a project before filtering.
-    tmp <- Metadata %>% filter(projectid == sample_ProjectID)
-    tmp <- as.data.frame(tmp)
-    total_Samples <- nrow(tmp)
+    Metadata_Unfiltered <- Metadata %>% filter(projectid == sample_ProjectID)
+    Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
+    total_Samples <- nrow(Metadata_Unfiltered)
     Metadata <- Metadata %>%
       filter(projectid == sample_ProjectID) %>%
       filter(!is.na(latitude) & !is.na(longitude))
     Metadata <- as.data.frame(Metadata)
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date)
+    if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
+      stop("Error: Sample data frame is empty. Cannot proceed.")
+    }
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
     
     #Create sample metadata matrix
@@ -159,25 +163,40 @@ tryCatch(
     Sample$fastqid <- NULL
     Sample <- sample_data(Sample)
     remaining_Samples <- rownames(Sample)
-    
+
     # Read in Tronko output and filter it.
-    TronkoFile <- paste(Marker, ".csv", sep = "")
-    TronkoFile_tmp <- paste(Marker,"_alpha_",UUIDgenerate(),".csv",sep="")
+    TronkoFile <- paste(sample_Primer, ".csv", sep = "")
+    TronkoFile_tmp <- paste(sample_Primer,"_prevalence_",UUIDgenerate(),".csv",sep="")
     system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", sample_ProjectID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
-    SubsetFile <- paste("subset_alpha_",UUIDgenerate(),".csv",sep="")
+    SubsetFile <- paste("subset_prevalence_",UUIDgenerate(),".csv",sep="")
     awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
     system(awk_command, intern = TRUE)
-    # Filter on the number of mismatches.  Remove entries with NA for mismatches and for the selected taxonomic rank.
     TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
+    #Remove samples with missing coordinates, and which are outside of the date filters.
+    TronkoInput <- TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
+    #Store the unfiltered reads.
+    Tronko_Unfiltered <- TronkoInput
+    # Calculate relative abundance of taxa with a given rank in the unfiltered reads.
+    Tronko_Unfiltered <- Tronko_Unfiltered %>%
+      dplyr::group_by(SampleID, !!sym(TaxonomicRank)) %>%
+      dplyr::summarise(n = n()) %>%
+      dplyr::mutate(freq = n / sum(n)) %>%
+      dplyr::ungroup() %>% select(-n)
+    #Filter on the number of reads per sample, then a mismatch threshold.
+    TronkoInput <- TronkoInput %>% group_by(SampleID) %>%
+      filter(n() > sample_CountThreshold) %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% select(-Mismatch)
+    #Merege relative abudance results into data filtered by reads per sample and mismatches.
+    #Then filtered on relative abundances.
     TronkoInput <- TronkoInput %>%
-      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>%
-      filter(!is.na(!!sym(TaxonomicRank))) %>%
-      group_by(SampleID) %>%
-      filter(n() > CountThreshold) %>%
-      select(SampleID, kingdom, phylum, class, order, family, genus, species)
+      left_join(Tronko_Unfiltered,na_matches="never") %>%
+      filter(freq >= FilterThreshold) %>% select(-freq)
     TronkoDB <- as.data.frame(TronkoInput)
+    #Remove taxa which are unknown at a given rank.
+    TronkoDB <- TronkoDB[,c("SampleID",TaxonomicRanks[1:TaxonomicNum])]
+    TronkoDB <- TronkoDB[!is.na(TronkoDB[, sample_TaxonomicRank]), ]
+    #Filter results by species list.
     if (SelectedSpeciesList != "None") {
       TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name, ]
     }
@@ -186,7 +205,7 @@ tryCatch(
     }
     system(paste("rm ",TronkoFile_tmp,sep=""))
     system(paste("rm ",SubsetFile,sep=""))
-    
+
     if(nrow(TronkoDB) > 1){
       #Create OTU matrix
       otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
@@ -197,13 +216,7 @@ tryCatch(
       
       #Create merged Phyloseq object.
       physeq <- phyloseq(OTU,Sample)
-      CountFilter <- physeq
-      
-      #Filter on read abundance per sample.
-      tmpFilter  = transform_sample_counts(CountFilter, function(x) x / sum(x) )
-      tmpFiltered = filter_taxa(tmpFilter, function(x) sum(x) > sample_FilterThreshold, TRUE)
-      keeptaxa <- taxa_names(tmpFiltered)
-      AbundanceFiltered <- prune_taxa(keeptaxa,CountFilter)
+      AbundanceFiltered <- physeq
       
       if(EnvironmentalVariable %in% CategoricalVariables){
         #Store diversity versus variable data.
@@ -247,7 +260,7 @@ tryCatch(
     #Insert the number of samples and number of samples post-filtering as a return object.
     SampleDB <- data.frame(matrix(ncol=2,nrow=1))
     colnames(SampleDB) <- c("totalSamples","filteredSamples")
-    SampleDB$totalSamples <- nrow(Metadata)
+    SampleDB$totalSamples <- total_Samples
     SampleDB$filteredSamples <- nsamples(AbundanceFiltered)
     datasets <- list(datasets = list(results=plotly_json(p, FALSE),metadata=toJSON(SampleDB)))
     
