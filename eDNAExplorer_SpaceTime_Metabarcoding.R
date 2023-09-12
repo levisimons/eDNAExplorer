@@ -176,6 +176,10 @@ tryCatch(
     TronkoFile <- paste(Marker, ".csv", sep = "")
     TronkoFile_tmp <- paste(Marker,"_spacetime_",UUIDgenerate(),".csv",sep="")
     system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    #Check if file exists.
+    if(file.info(TronkoFile)$size== 0) {
+      stop("Error: Sample data frame is empty. Cannot proceed.")
+    }
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
     SubsetFile <- paste("subset_spacetime_",UUIDgenerate(),".csv",sep="")
     awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
@@ -301,9 +305,6 @@ tryCatch(
     SampleDB$totalSamples <- total_Samples
     SampleDB$filteredSamples <- num_filteredSamples
     
-    #Filter merged data.
-    #ProjectDB <- dplyr::inner_join(TronkoDB,ProjectDB,multiple="all")
-    
     #Aggregate merged data by the appropriate time interval to find taxa presence by time.
     ProjectDB_byTime <- ProjectDB %>% dplyr::distinct(site,SampleID,sample_date,Latin_Name,.keep_all=T) %>% 
       dplyr::group_by(sample_date,Latin_Name) %>% 
@@ -417,6 +418,10 @@ tryCatch(
     ProjectDB_bySample <- merge(all_combinations, ProjectDB_bySample, by = c("taxa", "SampleID"), all.x = TRUE)
     #Convert NA values to 0 in Presence.
     ProjectDB_bySample["Presence"][is.na(ProjectDB_bySample["Presence"])] <- 0
+    #Merge back in taxonomic information.
+    tmp <- ProjectDB[,c("Latin_Name","Common_Name","Image_URL")]
+    tmp <- tmp[!duplicated(tmp),]
+    ProjectDB_bySample <- dplyr::left_join(ProjectDB_bySample,tmp,by=c("taxa"="Latin_Name"))
     # Convert to a presence/absence data frame.
     ProjectDB_bySample <- tidyr::pivot_wider(ProjectDB_bySample, names_from = SampleID, values_from = Presence, values_fill = 0)
     ProjectDB_bySample <- as.data.frame(ProjectDB_bySample)
