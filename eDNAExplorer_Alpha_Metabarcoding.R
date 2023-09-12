@@ -175,7 +175,7 @@ tryCatch(
     TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
     #Remove samples with missing coordinates, and which are outside of the date filters.
-    TronkoInput <- TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
+    TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
     #Store the unfiltered reads.
     Tronko_Unfiltered <- TronkoInput
     # Calculate relative abundance of taxa with a given rank in the unfiltered reads.
