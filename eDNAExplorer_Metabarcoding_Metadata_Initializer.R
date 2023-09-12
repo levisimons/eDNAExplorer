@@ -87,7 +87,7 @@ tryCatch(
     names(Project_Data) <- gsub(x = names(Project_Data), pattern = "ForwardPS", replacement = "Forward PS")
     names(Project_Data) <- gsub(x = names(Project_Data), pattern = "ReversePS", replacement = "Reverse PS")
     Project_Data$`Sample Date` <- as.Date(as.character(parse_date_time(Project_Data$`Sample Date`, orders = c("ymd","mdy","dmy"))))
-    lubridate::ymd(Project_Data$`Sample Date`)
+    Project_Data$`Sample Date` <- lubridate::ymd(Project_Data$`Sample Date`)
     Project_Data$`Data type` <- NULL
     Project_Data$`Additional environmental metadata....` <- NULL
     #Remove zero length variable names
