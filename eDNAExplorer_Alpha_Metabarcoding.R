@@ -168,6 +168,10 @@ tryCatch(
     TronkoFile <- paste(sample_Primer, ".csv", sep = "")
     TronkoFile_tmp <- paste(sample_Primer,"_alpha_",UUIDgenerate(),".csv",sep="")
     system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", sample_ProjectID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    #Check if file exists.
+    if(file.info(TronkoFile)$size== 0) {
+      stop("Error: Sample data frame is empty. Cannot proceed.")
+    }
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
     SubsetFile <- paste("subset_alpha_",UUIDgenerate(),".csv",sep="")
     awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
@@ -175,7 +179,7 @@ tryCatch(
     TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
     #Remove samples with missing coordinates, and which are outside of the date filters.
-    TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
+    TronkoInput <- TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
     #Store the unfiltered reads.
     Tronko_Unfiltered <- TronkoInput
     # Calculate relative abundance of taxa with a given rank in the unfiltered reads.
