@@ -170,7 +170,7 @@ tryCatch(
     TronkoFile_tmp <- paste(sample_Primer,"_beta_",UUIDgenerate(),".csv",sep="")
     system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", sample_ProjectID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
     #Check if file exists.
-    if(file.info(TronkoFile)$size== 0) {
+    if(file.info(TronkoFile_tmp)$size== 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
     }
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
