@@ -17,7 +17,6 @@ require(dplyr)
 require(DBI)
 require(RPostgreSQL)
 require(digest)
-require(uuid)
 
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
@@ -171,6 +170,7 @@ tryCatch(
         }
         ASVInputs <- rbindlist(ASVInputs, use.names=TRUE, fill=TRUE)
         colnames(ASVInputs) <- gsub(paste(Primer,"_",sep=""),"",colnames(ASVInputs))
+        names(ASVInputs)[grep('seq_number', names(ASVInputs))] <- 'seq_number'
         
         max_rows_per_split <- 1000
         asv_table_filename <- paste(ProjectID,Primer,"asv_table.txt",sep="_")
@@ -310,10 +310,9 @@ tryCatch(
         
         #Save Tronko output.
         TronkoOutput_Filename <- paste(Primer,".csv",sep="")
-        TronkoFile_tmp <- paste(Primer,"_taxonomy_",UUIDgenerate(),".csv",sep="")
-        write.table(x=TronkoProject,file=TronkoFile_tmp,quote=FALSE,sep=",",row.names = FALSE)
-        system(paste("aws s3 cp ",TronkoFile_tmp," s3://ednaexplorer/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-        system(paste("rm ",TronkoFile_tmp,sep=""))
+        write.table(x=TronkoProject,file=TronkoOutput_Filename,quote=FALSE,sep=",",row.names = FALSE)
+        system(paste("aws s3 cp ",TronkoOutput_Filename," s3://ednaexplorer/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+        system(paste("rm ",TronkoOutput_Filename,sep=""))
         
         #Create database of Phylopic images and common names for taxa.
         TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")

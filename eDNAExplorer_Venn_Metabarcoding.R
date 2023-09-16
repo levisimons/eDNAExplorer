@@ -79,19 +79,26 @@ tryCatch(
       FilterThreshold <- args[8]
       SpeciesList <- args[9]
       Geographic_Scale <- args[10]
+      
+      CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
+      ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
+      FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
+      TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
+      TaxonomicKeyRanks <- c("kingdomKey","phylumKey","classKey","orderKey","familyKey","genusKey","speciesKey")
+      TaxonomicNum <- which(TaxonomicRanks == TaxonomicRank)
+      Project_ID <- as.character(ProjectID)
+      First_Date <- lubridate::ymd(First_Date)
+      Last_Date <- lubridate::ymd(Last_Date)
+      Marker <- as.character(Marker)
+      Num_Mismatch <- as.numeric(Num_Mismatch)
+      CountThreshold <- as.numeric(CountThreshold)
+      FilterThreshold <- as.numeric(FilterThreshold)
+      SelectedSpeciesList <- as.character(SpeciesList)
+      
+      filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,".json",sep="_")
+      filename <- gsub("_.json",".json",filename)
+      filename <- tolower(filename)
     }
-    CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
-    ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
-    FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
-    TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-    Project_ID <- as.character(ProjectID)
-    First_Date <- lubridate::ymd(First_Date)
-    Last_Date <- lubridate::ymd(Last_Date)
-    Marker <- as.character(Marker)
-    Num_Mismatch <- as.numeric(Num_Mismatch)
-    CountThreshold <- as.numeric(CountThreshold)
-    FilterThreshold <- as.numeric(FilterThreshold)
-    SelectedSpeciesList <- as.character(SpeciesList)
   },
   error = function(e) {
     process_error(e)
@@ -100,6 +107,12 @@ tryCatch(
 
 tryCatch(
   {
+    # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
+    data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
+    write(toJSON(data_to_write), filename)
+    system(paste("aws s3 cp ", filename, " s3://ednaexplorer/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+    system(paste("rm ", filename, sep = ""))
+    
     #Establish sql connection
     Database_Driver <- dbDriver("PostgreSQL")
     sapply(dbListConnections(Database_Driver), dbDisconnect)
@@ -116,15 +129,18 @@ tryCatch(
     Metadata <- tbl(con, "TronkoMetadata")
     Keep_Vars <- c(CategoricalVariables, ContinuousVariables, FieldVars)[c(CategoricalVariables, ContinuousVariables, FieldVars) %in% dbListFields(con, "TronkoMetadata")]
     # Get the number of samples in a project before filtering.
-    tmp <- Metadata %>% filter(projectid == Project_ID)
-    tmp <- as.data.frame(tmp)
-    total_Samples <- nrow(tmp)
+    Metadata_Unfiltered <- Metadata %>% filter(projectid == Project_ID)
+    Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
+    total_Samples <- nrow(Metadata_Unfiltered)
     Metadata <- Metadata %>%
       filter(projectid == Project_ID) %>%
       filter(!is.na(latitude) & !is.na(longitude))
     Metadata <- as.data.frame(Metadata)
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
+    if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
+      stop("Error: Sample data frame is empty. Cannot proceed.")
+    }
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
     
     # Read in Tronko output and filter it.
@@ -132,19 +148,34 @@ tryCatch(
     TronkoFile_tmp <- paste(Marker,"_venn_",UUIDgenerate(),".csv",sep="")
     system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
-    SubsetFile <- paste("subset_map_",UUIDgenerate(),".csv",sep="")
+    SubsetFile <- paste("subset_venn_",UUIDgenerate(),".csv",sep="")
     awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
     system(awk_command, intern = TRUE)
-    # Filter on the number of mismatches.  Remove entries with NA for mismatches and for the selected taxonomic rank.
     TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
+    #Remove samples with missing coordinates, and which are outside of the date filters.
+    TronkoInput <- TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
+    #Store the unfiltered reads.
+    Tronko_Unfiltered <- TronkoInput
+    # Calculate relative abundance of taxa with a given rank in the unfiltered reads.
+    Tronko_Unfiltered <- Tronko_Unfiltered %>%
+      dplyr::group_by(SampleID, !!sym(TaxonomicRank)) %>%
+      dplyr::summarise(n = n()) %>%
+      dplyr::mutate(freq = n / sum(n)) %>%
+      dplyr::ungroup() %>% select(-n)
+    #Filter on the number of reads per sample, then a mismatch threshold.
+    TronkoInput <- TronkoInput %>% group_by(SampleID) %>%
+      filter(n() > CountThreshold) %>% filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>% select(-Mismatch)
+    #Merege relative abudance results into data filtered by reads per sample and mismatches.
+    #Then filtered on relative abundances.
     TronkoInput <- TronkoInput %>%
-      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>%
-      filter(!is.na(!!sym(TaxonomicRank))) %>%
-      group_by(SampleID) %>%
-      filter(n() > CountThreshold) %>%
-      select(SampleID, kingdom, phylum, class, order, family, genus, species)
+      left_join(Tronko_Unfiltered,na_matches="never") %>%
+      filter(freq >= FilterThreshold) %>% select(-freq)
     TronkoDB <- as.data.frame(TronkoInput)
+    #Remove taxa which are unknown at a given rank.
+    TronkoDB <- TronkoDB[,c("SampleID",TaxonomicRanks[1:TaxonomicNum])]
+    TronkoDB <- TronkoDB[!is.na(TronkoDB[, TaxonomicRank]), ]
+    #Filter results by species list.
     if (SelectedSpeciesList != "None") {
       TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name, ]
     }
@@ -152,18 +183,11 @@ tryCatch(
       TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
     }
     system(paste("rm ",TronkoFile_tmp,sep=""))
-    system("rm ",SubsetFile,sep="")
+    system(paste("rm ",SubsetFile,sep=""))
     
-    #Filter by relative abundance per taxon per sample.
-    if(nrow(TronkoDB) > 1){
-      TronkoDB <- TronkoDB[!is.na(TronkoDB[,TaxonomicRank]),]
-      TronkoDB <- TronkoDB %>% dplyr::group_by(SampleID,!!sym(TaxonomicRank)) %>% 
-        dplyr::summarise(n=n()) %>% dplyr::mutate(freq=n/sum(n)) %>% 
-        dplyr::ungroup() %>% dplyr::filter(freq > FilterThreshold) %>% select(-n,-freq)
+    #Get eDNA results summarized.
+    if(nrow(TronkoDB) >= 1){
       num_filteredSamples <- length(unique(TronkoDB$SampleID))
-      TronkoDB <- TronkoDB %>% dplyr::group_by(!!sym(TaxonomicRank)) %>% dplyr::summarise(per=n()/length(unique(TronkoDB$SampleID)))
-      TronkoDB <- as.data.frame(TronkoDB)
-      
       #Get unique taxa list from Tronko-assign
       Tronko_Taxa <- na.omit(unique(TronkoDB[,TaxonomicRank]))
       Tronko_Taxa <- as.data.frame(Tronko_Taxa)
@@ -224,7 +248,7 @@ tryCatch(
     #Insert the number of samples and number of samples post-filtering as a return object.
     SampleDB <- data.frame(matrix(ncol=2,nrow=1))
     colnames(SampleDB) <- c("totalSamples","filteredSamples")
-    SampleDB$totalSamples <- nrow(Metadata)
+    SampleDB$totalSamples <- total_Samples
     SampleDB$filteredSamples <- num_filteredSamples
     datasets <- list(datasets = list(eDNA=Tronko_Taxa[,1],GBIF=Taxa_GBIF[,1],metadata=SampleDB))
     filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,".json",sep="_")
