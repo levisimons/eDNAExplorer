@@ -22,4 +22,4 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y sshpass
-          sshpass -p "${{ env.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -r ./* ${{ env.SSH_USER }}@${{ env.SSH_ADDRESS }}:/home/ubuntu/eDNAExplorer/eDNAExplorer
+          sshpass -p "${{ env.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -r ./* ${{ env.SSH_USER }}@${{ env.SSH_ADDRESS }}:/home/ubuntu/eDNAExplorer
