@@ -1,36 +1,25 @@
-if (!requireNamespace("phyloseq", quietly = TRUE)) {
-    print("Attempting to install phyloseq")
-
-    # Install dependencies
-    deps <- c("Rhdf5lib", "rhdf5filters", "rhdf5", "biomformat")
-    for (pkg in deps) {
-        print(paste("Attempting to install", pkg))
-        if (pkg == "Rhdf5lib") {
-            install.packages("Rhdf5lib",
-                configure.args = c("--with-hdf5=/usr/lib/x86_64-linux-gnu/hdf5/serial"),
-                repos = BiocManager::repositories(),
-                type = "source"
-            )
-        } else {
-            BiocManager::install(pkg)
-        }
-        if (!requireNamespace(pkg, quietly = TRUE)) {
-            stop(paste("Failed to install", pkg, ". Halting execution."))
-        }
+install_and_verify_package <- function(
+    package_name,
+    repos_url = "https://cloud.r-project.org/",
+    ncpus = 8) {
+    install.packages(package_name, repos = repos_url, Ncpus = ncpus)
+    if (!requireNamespace(package_name, quietly = TRUE)) {
+        stop(paste("Failed to install", package_name, ". Halting execution."))
     }
+}
 
-    BiocManager::install("phyloseq")
-    if (!requireNamespace("phyloseq", quietly = TRUE)) {
-        stop("Failed to install phyloseq. Halting execution.")
-    }
-} else {
-    print("phyloseq is installed")
-}
-install.packages("datadogr", repos = "https://cloud.r-project.org/")
-if (!requireNamespace("datadogr", quietly = TRUE)) {
-    stop("Failed to install datadogr. Halting execution.")
-}
-install.packages("ggVennDiagram", repos = "https://cloud.r-project.org/")
-if (!requireNamespace("ggVennDiagram", quietly = TRUE)) {
-    stop("Failed to install ggVennDiagram. Halting execution.")
-}
+# Usage
+install_and_verify_package("datadogr")
+install_and_verify_package("ggVennDiagram")
+install_and_verify_package("ggplot2")
+install_and_verify_package("plotly")
+install_and_verify_package("tidyr")
+install_and_verify_package("dplyr")
+install_and_verify_package("lubridate")
+install_and_verify_package("jsonlite")
+install_and_verify_package("data.table")
+install_and_verify_package("uuid")
+install_and_verify_package("RPostgreSQL")
+install_and_verify_package("DBI")
+install_and_verify_package("anytime")
+install_and_verify_package("digest")

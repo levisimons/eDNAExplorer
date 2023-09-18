@@ -9,7 +9,7 @@ COMMAND="$@"
 SCRIPT_DIR=$(dirname "$0")
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 
-DOCKER_CMD="docker run --platform linux/amd64 -v $PROJECT_ROOT:/project jimjeffers/edna-explorer:v2 $COMMAND"
+DOCKER_CMD="docker run --platform linux/amd64 -v $PROJECT_ROOT:/project jimjeffers/edna-explorer:v3 $COMMAND"
 
 echo "Executing: $DOCKER_CMD"
 eval $DOCKER_CMD
