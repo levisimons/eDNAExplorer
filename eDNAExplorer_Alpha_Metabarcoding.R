@@ -35,9 +35,9 @@ process_error <- function(e, filename = "error.json") {
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://ednaexplorer_staging/errors/alpha/", new_filename, sep = "")
+    paste("s3://ednaexplorer/errors/alpha/", new_filename, sep = "")
   } else {
-    paste("s3://ednaexplorer_staging/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    paste("s3://ednaexplorer/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -66,7 +66,7 @@ db_pass <- Sys.getenv("db_pass")
 # SpeciesList:string Name of csv file containing selected species list.
 # EnvironmentalParameter:string Environmental variable to analyze against alpha diversity
 # AlphaDiversity:string Alpha diversity metric
-# Rscript --vanilla ednaexplorer_staging_Alpha_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList" "EnvironmentalParameter" "AlphaDiversity"
+# Rscript --vanilla eDNAExplorer_Alpha_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList" "EnvironmentalParameter" "AlphaDiversity"
 
 tryCatch(
   {
@@ -121,7 +121,7 @@ tryCatch(
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer_staging/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     #Establish sql connection
@@ -167,7 +167,7 @@ tryCatch(
     # Read in Tronko output and filter it.
     TronkoFile <- paste(sample_Primer, ".csv", sep = "")
     TronkoFile_tmp <- paste(sample_Primer,"_alpha_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://ednaexplorer_staging/tronko_output/", sample_ProjectID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", sample_ProjectID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
     #Check if file exists.
     if(file.info(TronkoFile_tmp)$size== 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
@@ -227,9 +227,9 @@ tryCatch(
         #Store diversity versus variable data.
         tmp <- ggplot_build(plot_richness(AbundanceFiltered,x=EnvironmentalVariable,measures=AlphaDiversityMetric))
         tmp <- tmp$data[[1]]
-        tmp$x <- as.factor(tmp$x)
+        tmp$x <- as.factor(sample_data(AbundanceFiltered)[[EnvironmentalVariable]])
         #Store variable values for categorical data.
-        tmp$var_names <- sample_data(AbundanceFiltered)[[EnvironmentalVariable]]
+        #tmp$var_names <- sample_data(AbundanceFiltered)[[EnvironmentalVariable]]
         #Run a Kruskal-Wallis test between alpha diversity and selected environmental variable.
         if(length(unique(tmp$x))>1){
           test <- suppressWarnings(kruskal.test(tmp$y ~ tmp$x, data = tmp))
@@ -238,7 +238,7 @@ tryCatch(
           Stats_Message <- "Not enough variation in environmental variable to run Kruskal-Wallis test."
         }
         #General a violin plot of alpha diversity versus an environmental variable.
-        p <- ggplot(tmp, aes(x=var_names, y=y))+
+        p <- ggplot(tmp, aes(x=x, y=y))+
           labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=gsub("_"," ",EnvironmentalVariable), y = AlphaDiversityMetric)+
           geom_violin()+theme_bw()+geom_point(position = position_jitter(seed = 1, width = 0.2))
       }
@@ -277,7 +277,7 @@ tryCatch(
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     write(toJSON(datasets),filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer_staging/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
   },
   error = function(e) {
