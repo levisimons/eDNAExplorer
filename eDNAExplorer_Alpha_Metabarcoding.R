@@ -211,6 +211,14 @@ tryCatch(
     system(paste("rm ",SubsetFile,sep=""))
 
     if(nrow(TronkoDB) > 1){
+      #Read in information to map categorical labels for certain variables.
+      categories <- read.table("Categories.csv",header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A","n/a","na"))
+      #Read in information for legends and labels
+      legends_and_labels <- read.table("LabelsAndLegends.csv",header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A","n/a","na"))
+      #Set up new legends and x-axis labels.
+      new_legend <- legends_and_labels[legends_and_labels$Environmental_Variable==EnvironmentalVariable,"Legend"]
+      new_axis_label <- legends_and_labels[legends_and_labels$Environmental_Variable==EnvironmentalVariable,"x_axis"]
+      
       #Create OTU matrix
       otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
       rownames(otumat) <- otumat[,sample_TaxonomicRank]
@@ -223,13 +231,17 @@ tryCatch(
       AbundanceFiltered <- physeq
       
       if(EnvironmentalVariable %in% CategoricalVariables){
-        #sample_data(AbundanceFiltered)[[EnvironmentalVariable]] <- as.factor(sample_data(AbundanceFiltered)[[EnvironmentalVariable]])
         #Store diversity versus variable data.
         tmp <- ggplot_build(plot_richness(AbundanceFiltered,x=EnvironmentalVariable,measures=AlphaDiversityMetric))
         tmp <- tmp$data[[1]]
-        tmp$x <- as.factor(sample_data(AbundanceFiltered)[[EnvironmentalVariable]])
         #Store variable values for categorical data.
-        #tmp$var_names <- sample_data(AbundanceFiltered)[[EnvironmentalVariable]]
+        if(EnvironmentalVariable %in% unique(categories$Environmental_Variable)){
+          tmp$x <- as.character(sample_data(AbundanceFiltered)[[EnvironmentalVariable]])
+          tmp <- dplyr::left_join(tmp,categories[categories$Environmental_Variable==EnvironmentalVariable,],by=c("x"="value"))
+          tmp$x <- as.factor(tmp$description)
+        } else{
+          tmp$x <- as.factor(sample_data(AbundanceFiltered)[[EnvironmentalVariable]])
+        }
         #Run a Kruskal-Wallis test between alpha diversity and selected environmental variable.
         if(length(unique(tmp$x))>1){
           test <- suppressWarnings(kruskal.test(tmp$y ~ tmp$x, data = tmp))
@@ -239,8 +251,8 @@ tryCatch(
         }
         #General a violin plot of alpha diversity versus an environmental variable.
         p <- ggplot(tmp, aes(x=x, y=y))+
-          labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=gsub("_"," ",EnvironmentalVariable), y = AlphaDiversityMetric)+
-          geom_violin()+theme_bw()+geom_point(position = position_jitter(seed = 1, width = 0.2))
+          labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=new_axis_label, y = AlphaDiversityMetric)+
+          geom_violin()+theme_bw()+geom_point(position = position_jitter(seed = 1, width = 0.2))+guides(fill=guide_legend(title=new_legend))
       }
       
       if(EnvironmentalVariable %in% ContinuousVariables){
@@ -257,8 +269,8 @@ tryCatch(
         }
         #Generate a scatterplot of alpha diversity versus an environmental variable.
         p <- ggplot(tmp, aes(x=x, y=y))+
-          labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=gsub("_"," ",EnvironmentalVariable), y = AlphaDiversityMetric)+
-          theme_bw()+geom_point()+geom_smooth()
+          labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=new_axis_label, y = AlphaDiversityMetric)+
+          theme_bw()+geom_point()+geom_smooth()+guides(fill=guide_legend(title=new_legend))
       }
     } else {
       Stat_test <- "Not enough data to perform a Kruskal-Wallis test on alpha diversity."
