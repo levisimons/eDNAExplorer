@@ -244,6 +244,7 @@ tryCatch(
         if(EnvironmentalVariable %in% unique(categories$Environmental_Variable)){
           tmp$x <- as.character(sample_data(AbundanceFiltered)[[EnvironmentalVariable]])
           tmp <- dplyr::left_join(tmp,categories[categories$Environmental_Variable==EnvironmentalVariable,],by=c("x"="value"))
+          tmp["description"][is.na(tmp["description"])] <- "Missing Data"
           tmp$x <- as.factor(tmp$description)
         } else{
           tmp$x <- as.factor(sample_data(AbundanceFiltered)[[EnvironmentalVariable]])

@@ -135,7 +135,21 @@ tryCatch(
       SpeciesList_df <- SpeciesList_df %>% filter(species_list == SelectedSpeciesList)
       SpeciesList_df <- as.data.frame(SpeciesList_df)
     }
-        
+    
+    #Read in information to map categorical labels for certain variables.
+    category_file <- paste("Categories_",UUIDgenerate(),".csv",sep="")
+    system(paste("aws s3 cp s3://ednaexplorer_staging/analysis/Categories.csv ",category_file," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    categories <- as.data.frame(fread(file=category_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A")))
+    system(paste("rm ",category_file,sep=""))
+    #Read in information for legends and labels
+    legends_file <- paste("LabelsAndLegends_",UUIDgenerate(),".csv",sep="")
+    system(paste("aws s3 cp s3://ednaexplorer_staging/analysis/LabelsAndLegends.csv ",legends_file," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    legends_and_labels <- as.data.frame(fread(file=legends_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A")))
+    system(paste("rm ",legends_file,sep=""))
+    #Set up new legends and x-axis labels.
+    new_legend <- legends_and_labels[legends_and_labels$Environmental_Variable==EnvironmentalVariable,"Legend"]
+    new_axis_label <- legends_and_labels[legends_and_labels$Environmental_Variable==EnvironmentalVariable,"x_axis"]
+    
     # Read in metadata and filter it.
     Metadata <- tbl(con, "TronkoMetadata")
     Keep_Vars <- c(CategoricalVariables, ContinuousVariables, FieldVars)[c(CategoricalVariables, ContinuousVariables, FieldVars) %in% dbListFields(con, "TronkoMetadata")]
@@ -154,6 +168,9 @@ tryCatch(
       stop("Error: Sample data frame is empty. Cannot proceed.")
     }
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
+    #Rename selected environmental variable
+    tmp["description"][is.na(tmp["description"])] <- "Missing Data"
+    Metadata[EnvironmentalVariable][is.na(Metadata[EnvironmentalVariable])] <- new_legend
     
     #Create sample metadata matrix
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
@@ -230,14 +247,14 @@ tryCatch(
         if(sum(!is.nan(BetaDist))>1){
           ordination = ordinate(AbundanceFiltered, method="PCoA", distance=BetaDist)
           AbundanceFiltered_df <- data.frame(sample_data(AbundanceFiltered))
-          if(length(unique(AbundanceFiltered_df[,EnvironmentalVariable]))>1){
-            BetaExpression = paste("adonis2(BetaDist ~ sample_data(AbundanceFiltered)$",EnvironmentalVariable,")",sep="")
+          if(length(unique(AbundanceFiltered_df[,new_legend]))>1){
+            BetaExpression = paste("adonis2(BetaDist ~ sample_data(AbundanceFiltered)$",new_legend,")",sep="")
             test <- eval(parse(text=BetaExpression))
-            Stat_test <- paste("PCA plot.  Results of PERMANOVA, using 999 permutations.\n",BetaDiversityMetric," beta diversity and ",EnvironmentalVariable,"\nDegrees of freedom: ",round(test$Df[1],3),". Sum of squares: ",round(test$SumOfSqs[1],3),". R-squared: ",round(test$R2[1],3),". F-statistic: ",round(test$F[1],3),". p: ",round(test$`Pr(>F)`[1],3),sep="")
+            Stat_test <- paste("PCA plot.  Results of PERMANOVA, using 999 permutations.\n",BetaDiversityMetric," beta diversity and ",new_legend,"\nDegrees of freedom: ",round(test$Df[1],3),". Sum of squares: ",round(test$SumOfSqs[1],3),". R-squared: ",round(test$R2[1],3),". F-statistic: ",round(test$F[1],3),". p: ",round(test$`Pr(>F)`[1],3),sep="")
           } else {
-            Stat_test <- paste("PCA plot.  Not enough variation in ",EnvironmentalVariable," to perform a PERMANOVA on beta diversity.",sep="")
+            Stat_test <- paste("PCA plot.  Not enough variation in ",new_legend," to perform a PERMANOVA on beta diversity.",sep="")
           }
-          p <- plot_ordination(AbundanceFiltered, ordination, color=EnvironmentalVariable) + theme(aspect.ratio=1) + labs(title = Stat_test, color = EnvironmentalVariable)
+          p <- plot_ordination(AbundanceFiltered, ordination, color=new_legend) + theme(aspect.ratio=1) + labs(title = Stat_test, color = new_legend)
           p <- p+theme_bw()
         } else{
           Stat_test <- "PCA plot.  Not enough remaining data after filters to perform a PERMANOVA on beta diversity."
