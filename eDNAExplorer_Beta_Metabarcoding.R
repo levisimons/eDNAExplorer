@@ -169,8 +169,7 @@ tryCatch(
     }
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
     #Rename selected environmental variable
-    tmp["description"][is.na(tmp["description"])] <- "Missing Data"
-    Metadata[EnvironmentalVariable][is.na(Metadata[EnvironmentalVariable])] <- new_legend
+    colnames(Metadata)[colnames(Metadata) == EnvironmentalVariable] <- new_legend
     
     #Create sample metadata matrix
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
@@ -239,6 +238,7 @@ tryCatch(
       #Create merged Phyloseq object.
       physeq <- phyloseq(OTU,Sample)
       AbundanceFiltered <- physeq
+      colnames(AbundanceFiltered@sam_data) <- gsub("\\."," ",colnames(AbundanceFiltered@sam_data))
             
       #Plot and analyze beta diversity versus an environmental variables.
       if(nsamples(AbundanceFiltered)>1 & ntaxa(AbundanceFiltered)>1){
@@ -248,7 +248,7 @@ tryCatch(
           ordination = ordinate(AbundanceFiltered, method="PCoA", distance=BetaDist)
           AbundanceFiltered_df <- data.frame(sample_data(AbundanceFiltered))
           if(length(unique(AbundanceFiltered_df[,new_legend]))>1){
-            BetaExpression = paste("adonis2(BetaDist ~ sample_data(AbundanceFiltered)$",new_legend,")",sep="")
+            BetaExpression = paste('adonis2(BetaDist ~ sample_data(AbundanceFiltered)[[',deparse(new_legend),']])',sep="")
             test <- eval(parse(text=BetaExpression))
             Stat_test <- paste("PCA plot.  Results of PERMANOVA, using 999 permutations.\n",BetaDiversityMetric," beta diversity and ",new_legend,"\nDegrees of freedom: ",round(test$Df[1],3),". Sum of squares: ",round(test$SumOfSqs[1],3),". R-squared: ",round(test$R2[1],3),". F-statistic: ",round(test$F[1],3),". p: ",round(test$`Pr(>F)`[1],3),sep="")
           } else {
