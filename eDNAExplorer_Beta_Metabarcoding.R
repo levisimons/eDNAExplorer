@@ -247,7 +247,7 @@ tryCatch(
         if(sum(!is.nan(BetaDist))>1){
           ordination = ordinate(AbundanceFiltered, method="PCoA", distance=BetaDist)
           AbundanceFiltered_df <- data.frame(sample_data(AbundanceFiltered))
-          if(length(unique(AbundanceFiltered_df[,new_legend]))>1){
+          if(length(unique(AbundanceFiltered@sam_data[[new_legend]]))>1){
             BetaExpression = paste('adonis2(BetaDist ~ sample_data(AbundanceFiltered)[[',deparse(new_legend),']])',sep="")
             test <- eval(parse(text=BetaExpression))
             Stat_test <- paste("PCA plot.  Results of PERMANOVA, using 999 permutations.\n",BetaDiversityMetric," beta diversity and ",new_legend,"\nDegrees of freedom: ",round(test$Df[1],3),". Sum of squares: ",round(test$SumOfSqs[1],3),". R-squared: ",round(test$R2[1],3),". F-statistic: ",round(test$F[1],3),". p: ",round(test$`Pr(>F)`[1],3),sep="")
