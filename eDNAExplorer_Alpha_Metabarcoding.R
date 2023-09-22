@@ -214,12 +214,12 @@ tryCatch(
       #Read in information to map categorical labels for certain variables.
       category_file <- paste("Categories_",UUIDgenerate(),".csv",sep="")
       system(paste("aws s3 cp s3://ednaexplorer_staging/analysis/Categories.csv ",category_file," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-      categories <- fread(file=category_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+      categories <- as.data.frame(fread(file=category_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A")))
       system(paste("rm ",category_file,sep=""))
       #Read in information for legends and labels
       legends_file <- paste("LabelsAndLegends_",UUIDgenerate(),".csv",sep="")
       system(paste("aws s3 cp s3://ednaexplorer_staging/analysis/LabelsAndLegends.csv ",legends_file," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-      legends_and_labels <- fread(file=legends_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+      legends_and_labels <- as.data.frame(fread(file=legends_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A")))
       system(paste("rm ",legends_file,sep=""))
       #Set up new legends and x-axis labels.
       new_legend <- legends_and_labels[legends_and_labels$Environmental_Variable==EnvironmentalVariable,"Legend"]
