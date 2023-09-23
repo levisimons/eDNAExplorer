@@ -169,7 +169,7 @@ tryCatch(
     }
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
     #Rename selected environmental variable
-    colnames(Metadata)[colnames(Metadata) == EnvironmentalVariable] <- new_legend
+    #colnames(Metadata)[colnames(Metadata) == EnvironmentalVariable] <- new_legend
     
     #Create sample metadata matrix
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
@@ -238,7 +238,7 @@ tryCatch(
       #Create merged Phyloseq object.
       physeq <- phyloseq(OTU,Sample)
       AbundanceFiltered <- physeq
-      colnames(AbundanceFiltered@sam_data) <- gsub("\\."," ",colnames(AbundanceFiltered@sam_data))
+      #colnames(AbundanceFiltered@sam_data) <- gsub("\\."," ",colnames(AbundanceFiltered@sam_data))
             
       #Plot and analyze beta diversity versus an environmental variables.
       if(nsamples(AbundanceFiltered)>1 & ntaxa(AbundanceFiltered)>1){
@@ -247,14 +247,15 @@ tryCatch(
         if(sum(!is.nan(BetaDist))>1){
           ordination = ordinate(AbundanceFiltered, method="PCoA", distance=BetaDist)
           AbundanceFiltered_df <- data.frame(sample_data(AbundanceFiltered))
-          if(length(unique(AbundanceFiltered@sam_data[[new_legend]]))>1){
-            BetaExpression = paste('adonis2(BetaDist ~ sample_data(AbundanceFiltered)[[',deparse(new_legend),']])',sep="")
+          #colnames(AbundanceFiltered_df) <-gsub("\\."," ",colnames(AbundanceFiltered_df))
+          if(length(unique(AbundanceFiltered@sam_data[[EnvironmentalVariable]]))>1){
+            BetaExpression = paste('adonis2(BetaDist ~ sample_data(AbundanceFiltered)[[',deparse(EnvironmentalVariable),']])',sep="")
             test <- eval(parse(text=BetaExpression))
             Stat_test <- paste("PCA plot.  Results of PERMANOVA, using 999 permutations.\n",BetaDiversityMetric," beta diversity and ",new_legend,"\nDegrees of freedom: ",round(test$Df[1],3),". Sum of squares: ",round(test$SumOfSqs[1],3),". R-squared: ",round(test$R2[1],3),". F-statistic: ",round(test$F[1],3),". p: ",round(test$`Pr(>F)`[1],3),sep="")
           } else {
             Stat_test <- paste("PCA plot.  Not enough variation in ",new_legend," to perform a PERMANOVA on beta diversity.",sep="")
           }
-          p <- plot_ordination(AbundanceFiltered, ordination, color=new_legend) + theme(aspect.ratio=1) + labs(title = Stat_test, color = new_legend)
+          p <- plot_ordination(AbundanceFiltered, ordination, color=EnvironmentalVariable) + theme(aspect.ratio=1) + labs(title = Stat_test, color = EnvironmentalVariable)
           p <- p+theme_bw()
         } else{
           Stat_test <- "PCA plot.  Not enough remaining data after filters to perform a PERMANOVA on beta diversity."
@@ -274,7 +275,8 @@ tryCatch(
     colnames(SampleDB) <- c("totalSamples","filteredSamples")
     SampleDB$totalSamples <- total_Samples
     SampleDB$filteredSamples <- nsamples(AbundanceFiltered)
-    datasets <- list(datasets = list(results=plotly_json(p, FALSE),metadata=toJSON(SampleDB)))
+    #Change legend label
+    datasets <- list(datasets = list(results=gsub(EnvironmentalVariable,new_legend,plotly_json(p, FALSE)),metadata=toJSON(SampleDB)))
     
     #Save plot as json object
     filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,",json",sep="_")
