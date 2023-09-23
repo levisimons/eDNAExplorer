@@ -168,8 +168,13 @@ tryCatch(
       stop("Error: Sample data frame is empty. Cannot proceed.")
     }
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
-    #Rename selected environmental variable
-    #colnames(Metadata)[colnames(Metadata) == EnvironmentalVariable] <- new_legend
+    #Change values of selected variable
+    if(EnvironmentalVariable %in% unique(categories$Environmental_Variable)){
+      colnames(Metadata)[colnames(Metadata) == EnvironmentalVariable] <- 'value'
+      Metadata <- dplyr::left_join(Metadata,categories[categories$Environmental_Variable==EnvironmentalVariable,])
+      colnames(Metadata)[colnames(Metadata) == 'description'] <- EnvironmentalVariable
+    }
+    
     
     #Create sample metadata matrix
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
@@ -238,7 +243,6 @@ tryCatch(
       #Create merged Phyloseq object.
       physeq <- phyloseq(OTU,Sample)
       AbundanceFiltered <- physeq
-      #colnames(AbundanceFiltered@sam_data) <- gsub("\\."," ",colnames(AbundanceFiltered@sam_data))
             
       #Plot and analyze beta diversity versus an environmental variables.
       if(nsamples(AbundanceFiltered)>1 & ntaxa(AbundanceFiltered)>1){
@@ -247,7 +251,6 @@ tryCatch(
         if(sum(!is.nan(BetaDist))>1){
           ordination = ordinate(AbundanceFiltered, method="PCoA", distance=BetaDist)
           AbundanceFiltered_df <- data.frame(sample_data(AbundanceFiltered))
-          #colnames(AbundanceFiltered_df) <-gsub("\\."," ",colnames(AbundanceFiltered_df))
           if(length(unique(AbundanceFiltered@sam_data[[EnvironmentalVariable]]))>1){
             BetaExpression = paste('adonis2(BetaDist ~ sample_data(AbundanceFiltered)[[',deparse(EnvironmentalVariable),']])',sep="")
             test <- eval(parse(text=BetaExpression))
