@@ -162,7 +162,6 @@ tryCatch(
     rownames(Sample) <- Sample$fastqid
     Sample$fastqid <- NULL
     Sample <- sample_data(Sample)
-    remaining_Samples <- rownames(Sample)
 
     # Read in Tronko output and filter it.
     TronkoFile <- paste(sample_Primer, ".csv", sep = "")
