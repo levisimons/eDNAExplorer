@@ -38,7 +38,7 @@ process_error <- function(e, filename = "error.json") {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
   stack_trace <- paste(capture.output(traceback()), collapse = "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message, stack_trace = stack_trace))
+  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message, stack_trace = stack_trace))
   write(json_content, filename)
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
@@ -47,7 +47,8 @@ process_error <- function(e, filename = "error.json") {
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
     paste("s3://",bucket,"/errors/beta/", new_filename, sep = "")
   } else {
-    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    dest_filename <- sub("\\.json$", ".build", filename)
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
