@@ -45,16 +45,10 @@ process_error <- function(e, filename = "error.json") {
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-<<<<<<< HEAD
-    paste("s3://",S3_BUCKET,"/errors/alpha/", new_filename, sep = "")
-  } else {
-    paste("s3://",S3_BUCKET,"/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
-=======
     paste("s3://",bucket,"/errors/alpha/", new_filename, sep = "")
   } else {
     dest_filename <- sub("\\.json$", ".build", filename)
     paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -62,19 +56,6 @@ process_error <- function(e, filename = "error.json") {
   stop(error_message)
 }
 
-<<<<<<< HEAD
-readRenviron(".env")
-Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
-           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
-db_host <- Sys.getenv("db_host")
-db_port <- Sys.getenv("db_port")
-db_name <- Sys.getenv("db_name")
-db_user <- Sys.getenv("db_user")
-db_pass <- Sys.getenv("db_pass")
-S3_BUCKET <- Sys.getenv("S3_BUCKET")
-
-=======
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
 # Get filtering parameters.
 # ProjectID:string
 # First_Date:string YYYY-MM-DD
@@ -87,7 +68,7 @@ S3_BUCKET <- Sys.getenv("S3_BUCKET")
 # SpeciesList:string Name of csv file containing selected species list.
 # EnvironmentalParameter:string Environmental variable to analyze against alpha diversity
 # AlphaDiversity:string Alpha diversity metric
-# Rscript --vanilla ",S3_BUCKET,"_Alpha_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList" "EnvironmentalParameter" "AlphaDiversity"
+# Rscript --vanilla ednaexplorer_staging_Alpha_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList" "EnvironmentalParameter" "AlphaDiversity"
 
 tryCatch(
   {
@@ -141,14 +122,9 @@ tryCatch(
   {
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
-<<<<<<< HEAD
-    write(toJSON(data_to_write), gsub(".json",".build",filename))
-    system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-=======
     write(toJSON(data_to_write), filename)
     dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
     system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",dest_filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
     
     #Establish sql connection
@@ -189,15 +165,11 @@ tryCatch(
     rownames(Sample) <- Sample$fastqid
     Sample$fastqid <- NULL
     Sample <- sample_data(Sample)
-
+    
     # Read in Tronko output and filter it.
     TronkoFile <- paste(sample_Primer, ".csv", sep = "")
     TronkoFile_tmp <- paste(sample_Primer,"_alpha_",UUIDgenerate(),".csv",sep="")
-<<<<<<< HEAD
-    system(paste("aws s3 cp s3://",S3_BUCKET,"/tronko_output/", sample_ProjectID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
-=======
     system(paste("aws s3 cp s3://",bucket,"/tronko_output/", sample_ProjectID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     #Check if file exists.
     if(file.info(TronkoFile_tmp)$size== 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
@@ -209,7 +181,7 @@ tryCatch(
     TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
     #Remove samples with missing coordinates, and which are outside of the date filters.
-    TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
+    TronkoInput <- TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
     #Store the unfiltered reads.
     Tronko_Unfiltered <- TronkoInput
     # Calculate relative abundance of taxa with a given rank in the unfiltered reads.
@@ -239,24 +211,16 @@ tryCatch(
     }
     system(paste("rm ",TronkoFile_tmp,sep=""))
     system(paste("rm ",SubsetFile,sep=""))
-
+    
     if(nrow(TronkoDB) > 1){
       #Read in information to map categorical labels for certain variables.
       category_file <- paste("Categories_",UUIDgenerate(),".csv",sep="")
-<<<<<<< HEAD
-      system(paste("aws s3 cp s3://",S3_BUCKET,"/analysis/Categories.csv ",category_file," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-=======
       system(paste("aws s3 cp s3://",bucket,"/analysis/Categories.csv ",category_file," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
       categories <- as.data.frame(fread(file=category_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A")))
       system(paste("rm ",category_file,sep=""))
       #Read in information for legends and labels
       legends_file <- paste("LabelsAndLegends_",UUIDgenerate(),".csv",sep="")
-<<<<<<< HEAD
-      system(paste("aws s3 cp s3://",S3_BUCKET,"/analysis/LabelsAndLegends.csv ",legends_file," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-=======
       system(paste("aws s3 cp s3://",bucket,"/analysis/LabelsAndLegends.csv ",legends_file," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
       legends_and_labels <- as.data.frame(fread(file=legends_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A")))
       system(paste("rm ",legends_file,sep=""))
       #Set up new legends and x-axis labels.
@@ -334,11 +298,7 @@ tryCatch(
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     write(toJSON(datasets),filename)
-<<<<<<< HEAD
-    system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-=======
     system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
   },
   error = function(e) {

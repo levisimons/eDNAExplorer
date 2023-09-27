@@ -45,16 +45,10 @@ process_error <- function(e, filename = "error.json") {
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-<<<<<<< HEAD
-    paste("s3://",S3_BUCKET,"/errors/metadata/", new_filename, sep = "")
-  } else {
-    paste("s3://",S3_BUCKET,"/tronko_output/", ProjectID, "/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
-=======
     paste("s3://",bucket,"/errors/metadata/", new_filename, sep = "")
   } else {
     dest_filename <- sub("\\.json$", ".build", filename)
     paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -64,27 +58,13 @@ process_error <- function(e, filename = "error.json") {
   stop(error_message)
 }
 
-<<<<<<< HEAD
-#Establish database credentials.
-readRenviron(".env")
-Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
-           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
-db_host <- Sys.getenv("db_host")
-db_port <- Sys.getenv("db_port")
-db_name <- Sys.getenv("db_name")
-db_user <- Sys.getenv("db_user")
-db_pass <- Sys.getenv("db_pass")
-S3_BUCKET <- Sys.getenv("S3_BUCKET")
-Database_Driver <- dbDriver("PostgreSQL")
-=======
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
 
 tryCatch(
   {
     #Get project ID.
-    #Rscript --vanilla ",S3_BUCKET,"_Metabarcoding_Metadata_Initializer.R "project ID string"
+    #Rscript --vanilla eDNAExplorer_Metabarcoding_Metadata_Initializer.R "project ID string"
     if (length(args)==0) {
       stop("Need a project ID", call.=FALSE)
     } else if (length(args)==1) {
@@ -100,11 +80,7 @@ tryCatch(
 tryCatch(
   {
     #Find metabarcoding project data file and read it into a dataframe.
-<<<<<<< HEAD
-    Project_Data <- system(paste("aws s3 cp s3://",S3_BUCKET,"/projects",ProjectID,"METABARCODING.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
-=======
     Project_Data <- system(paste("aws s3 cp s3://",bucket,"/projects",ProjectID,"METABARCODING.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     #Project_Data <- gsub("[\r\n]", "", Project_Data)
     if(length(Project_Data)==0) {
       stop("Error: No initial metadata present.")
@@ -126,11 +102,7 @@ tryCatch(
     #Get field variables from initial metadata.  These are generally project-specific non-required variables.
     Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% Required_Variables)]
     #Read in extracted metadata.
-<<<<<<< HEAD
-    Metadata_Extracted <- system(paste("aws s3 cp s3://",S3_BUCKET,"/projects/",ProjectID,"/MetadataOutput_Metabarcoding.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-=======
     Metadata_Extracted <- system(paste("aws s3 cp s3://",bucket,"/projects/",ProjectID,"/MetadataOutput_Metabarcoding.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     if(length(Metadata_Extracted)==0) {
       stop("Error: No extracted metadata present.")
     }
@@ -142,7 +114,7 @@ tryCatch(
     Metadata_Extracted[Metadata_Extracted==-32768] <- NA
     
     #Merge metadata
-    Metadata <- dplyr::right_join(Metadata_Initial[,colnames(Metadata_Initial) %in% Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude"),na_matches="never")
+    Metadata <- dplyr::right_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude"),na_matches="never")
     
     #Add project ID
     Metadata$ProjectID <- ProjectID
@@ -154,20 +126,12 @@ tryCatch(
     #Read in state/province boundaries.
     #Boundaries are from https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/
     sf_use_s2(FALSE)
-<<<<<<< HEAD
-    SpatialBucket <- system("aws s3 ls s3://",S3_BUCKET,"/spatial --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",intern=TRUE)
-=======
     SpatialBucket <- system("aws s3 ls s3://",bucket,"/spatial --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",intern=TRUE)
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     SpatialBucket <- read.table(text = paste(SpatialBucket,sep = ""),header = FALSE)
     colnames(SpatialBucket) <- c("Date", "Time", "Size","Filename")
     SpatialFiles <- unique(SpatialBucket$Filename)
     for(SpatialFile in SpatialFiles){
-<<<<<<< HEAD
-      system(paste("aws s3 cp s3://",S3_BUCKET,"/",SpatialFile," . --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-=======
       system(paste("aws s3 cp s3://",bucket,"/",SpatialFile," . --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
->>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     }
     GADM_1_Boundaries <- sf::st_read("ne_10m_admin_1_states_provinces.shp")
     #Determine the unique list of national and state/proving boundaries sample locations cover.
