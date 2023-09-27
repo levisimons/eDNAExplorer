@@ -39,7 +39,7 @@ Database_Driver <- dbDriver("PostgreSQL")
 process_error <- function(e, filename = "error.json") {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
+  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message))
   write(json_content, filename)
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
@@ -48,7 +48,8 @@ process_error <- function(e, filename = "error.json") {
   if(is.null(ProjectID) || ProjectID == "") {
     s3_path <- paste("s3://",bucket,"/errors/taxonomy/", new_filename, sep = "")
   } else {
-    s3_path <- paste("s3://",bucket,"/tronko_output/", ProjectID, "/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    dest_filename <- sub("\\.json$", ".build", filename)
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)

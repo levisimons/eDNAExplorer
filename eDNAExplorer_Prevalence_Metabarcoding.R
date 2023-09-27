@@ -32,7 +32,7 @@ process_error <- function(e, filename = "error.json") {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
   stack_trace <- paste(capture.output(traceback()), collapse = "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message, stack_trace = stack_trace))
+  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message, lastRanAt = Sys.time(), stack_trace = stack_trace))
   write(json_content, filename)
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
@@ -41,7 +41,8 @@ process_error <- function(e, filename = "error.json") {
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
     paste("s3://",bucket,"/errors/prevalence/", new_filename, sep = "")
   } else {
-    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    dest_filename <- sub("\\.json$", ".build", filename)
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -108,9 +109,10 @@ tryCatch(
     filename <- tolower(filename)
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
-    data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
+data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
+    system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", Project_ID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
     system(paste("rm ", filename, sep = ""))
     
     # Establish sql connection
