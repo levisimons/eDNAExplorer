@@ -227,6 +227,21 @@ tryCatch(
       Taxa_GBIF <- na.omit(unique(Taxa_GBIF[,TaxonomicRank]))
       Taxa_GBIF <- as.data.frame(Taxa_GBIF)
       colnames(Taxa_GBIF) <- c("Taxa_Local")
+      
+      #Define results shared between eDNA and GBIF.
+      Both <- as.data.frame(intersect(Tronko_Taxa$eDNA,Taxa_GBIF$Taxa_Local))
+      colnames(Both) <- c("Both")
+      #Define eDNA results as those unique from GBIF
+      eDNA_only <- as.data.frame(Tronko_Taxa$eDNA[!(Tronko_Taxa$eDNA %in% Taxa_GBIF$Taxa_Local)])
+      colnames(eDNA_only) <- c("eDNA")
+      #Define GBIF results those unique from eDNA
+      GBIF_only <- as.data.frame(Taxa_GBIF$Taxa_Local[!(Taxa_GBIF$Taxa_Local %in% Tronko_Taxa$eDNA)])
+      colnames(GBIF_only) <- c("Taxa_Local")
+       
+      rm(Taxa_GBIF)
+      Taxa_GBIF <- GBIF_only
+      rm(Tronko_Taxa)
+      Tronko_Taxa <- eDNA_only
     }
     if(Geographic_Scale=="State"){
       #Clip GBIF occurrence locations by state/province boundaries.
@@ -237,6 +252,21 @@ tryCatch(
       Taxa_GBIF <- na.omit(unique(Taxa_GBIF[,TaxonomicRank]))
       Taxa_GBIF <- as.data.frame(Taxa_GBIF)
       colnames(Taxa_GBIF) <- c("Taxa_State")
+      
+      #Define results shared between eDNA and GBIF.
+      Both <- as.data.frame(intersect(Tronko_Taxa$eDNA,Taxa_GBIF$Taxa_State))
+      colnames(Both) <- c("Both")
+      #Define eDNA results as those unique from GBIF
+      eDNA_only <- as.data.frame(Tronko_Taxa$eDNA[!(Tronko_Taxa$eDNA %in% Taxa_GBIF$Taxa_State)])
+      colnames(eDNA_only) <- c("eDNA")
+      #Define GBIF results those unique from eDNA
+      GBIF_only <- as.data.frame(Taxa_GBIF$Taxa_State[!(Taxa_GBIF$Taxa_State %in% Tronko_Taxa$eDNA)])
+      colnames(GBIF_only) <- c("Taxa_State")
+      
+      rm(Taxa_GBIF)
+      Taxa_GBIF <- GBIF_only
+      rm(Tronko_Taxa)
+      Tronko_Taxa <- eDNA_only
     }
     if(Geographic_Scale=="Nation"){
       #Clip GBIF occurrence locations by national boundaries.
@@ -247,6 +277,21 @@ tryCatch(
       Taxa_GBIF <- na.omit(unique(Taxa_GBIF[,TaxonomicRank]))
       Taxa_GBIF <- as.data.frame(Taxa_GBIF)
       colnames(Taxa_GBIF) <- c("Taxa_Nation")
+      
+      #Define results shared between eDNA and GBIF.
+      Both <- as.data.frame(intersect(Tronko_Taxa$eDNA,Taxa_GBIF$Taxa_Nation))
+      colnames(Both) <- c("Both")
+      #Define eDNA results as those unique from GBIF
+      eDNA_only <- as.data.frame(Tronko_Taxa$eDNA[!(Tronko_Taxa$eDNA %in% Taxa_GBIF$Taxa_Nation)])
+      colnames(eDNA_only) <- c("eDNA")
+      #Define GBIF results those unique from eDNA
+      GBIF_only <- as.data.frame(Taxa_GBIF$Taxa_Nation[!(Taxa_GBIF$Taxa_Nation %in% Tronko_Taxa$eDNA)])
+      colnames(GBIF_only) <- c("Taxa_Nation")
+      
+      rm(Taxa_GBIF)
+      Taxa_GBIF <- GBIF_only
+      rm(Tronko_Taxa)
+      Tronko_Taxa <- eDNA_only
     }
     
     #Insert the number of samples and number of samples post-filtering as a return object.
@@ -254,7 +299,7 @@ tryCatch(
     colnames(SampleDB) <- c("totalSamples","filteredSamples")
     SampleDB$totalSamples <- total_Samples
     SampleDB$filteredSamples <- num_filteredSamples
-    datasets <- list(datasets = list(eDNA=Tronko_Taxa[,1],GBIF=Taxa_GBIF[,1],metadata=SampleDB))
+    datasets <- list(datasets = list(eDNA=Tronko_Taxa[,1],Both=Both[,1],GBIF=Taxa_GBIF[,1],metadata=SampleDB))
     filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
