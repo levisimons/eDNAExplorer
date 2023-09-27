@@ -26,9 +26,9 @@ process_error <- function(e, filename = "error.json") {
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://",S3_Bucket,"/errors/prevalence/", new_filename, sep = "")
+    paste("s3://",S3_BUCKET,"/errors/prevalence/", new_filename, sep = "")
   } else {
-    paste("s3://",S3_Bucket,"/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    paste("s3://",S3_BUCKET,"/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -59,7 +59,7 @@ S3_BUCKET <- Sys.getenv("S3_BUCKET")
 # CountThreshold:numeric Read count threshold for retaining samples
 # FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 # SpeciesList:string Name of csv file containing selected species list.
-# Rscript --vanilla ",S3_Bucket,"_Prevalence_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
+# Rscript --vanilla ",S3_BUCKET,"_Prevalence_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
 
 tryCatch(
   {
@@ -110,7 +110,7 @@ tryCatch(
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), gsub(".json",".build",filename))
-    system(paste("aws s3 cp ", filename, " s3://",S3_Bucket,"/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+    system(paste("aws s3 cp ", filename, " s3://",S3_BUCKET,"/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
     system(paste("rm ", filename, sep = ""))
     
     # Establish sql connection
@@ -146,7 +146,7 @@ tryCatch(
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
     TronkoFile_tmp <- paste(Marker,"_prevalence_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://",S3_Bucket,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    system(paste("aws s3 cp s3://",S3_BUCKET,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
     #Check if file exists.
     if(file.info(TronkoFile_tmp)$size== 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
@@ -271,7 +271,7 @@ tryCatch(
       
       datasets <- list(datasets = list(results = TronkoDB, metadata = SampleDB))
       write(toJSON(datasets), filename)
-      system(paste("aws s3 cp ", filename, " s3://",S3_Bucket,"/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+      system(paste("aws s3 cp ", filename, " s3://",S3_BUCKET,"/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
       system(paste("rm ", filename, sep = ""))
     }
     if(nrow(TronkoDB) == 0){

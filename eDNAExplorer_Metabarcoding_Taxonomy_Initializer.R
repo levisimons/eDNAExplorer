@@ -32,9 +32,9 @@ process_error <- function(e, filename = "error.json") {
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   
   if(is.null(ProjectID) || ProjectID == "") {
-    s3_path <- paste("s3://",S3_Bucket,"/errors/taxonomy/", new_filename, sep = "")
+    s3_path <- paste("s3://",S3_BUCKET,"/errors/taxonomy/", new_filename, sep = "")
   } else {
-    s3_path <- paste("s3://",S3_Bucket,"/tronko_output/", ProjectID, "/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    s3_path <- paste("s3://",S3_BUCKET,"/tronko_output/", ProjectID, "/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -60,7 +60,7 @@ sapply(dbListConnections(Database_Driver), dbDisconnect)
 tryCatch(
   {
     #Get project ID.
-    #Rscript --vanilla ",S3_Bucket,"_Metabarcoding_Taxonomy_Initializer.R "project ID string"
+    #Rscript --vanilla ",S3_BUCKET,"_Metabarcoding_Taxonomy_Initializer.R "project ID string"
     if (length(args)==0) {
       stop("Need a project ID", call.=FALSE)
     } else if (length(args)==1) {
@@ -127,7 +127,7 @@ tryCatch(
     #Loop over primers to add Tronko-assign data to database, along with associate Phylopic metadata.
     for(Primer in Primers){
       #Read in Tronko-assign output files.  Standardize sample IDs within them.
-      TronkoBucket <- system(paste("aws s3 ls s3://",S3_Bucket,"/projects/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+      TronkoBucket <- system(paste("aws s3 ls s3://",S3_BUCKET,"/projects/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
       TronkoBucket <- read.table(text = paste(TronkoBucket,sep = ""),header = FALSE)
       colnames(TronkoBucket) <- c("Date", "Time", "Size","Filename")
       TronkoFiles <- unique(TronkoBucket$Filename)
@@ -138,7 +138,7 @@ tryCatch(
         i=1
         #TronkoHeaders <- c("Readname","Taxonomic_Path","Score","Forward_Mismatch","Reverse_Mismatch","Tree_Number","Node_Number")
         for(TronkoFile in TronkoFiles){
-          system(paste("aws s3 cp s3://",S3_Bucket,"/",TronkoFile," ",basename(TronkoFile)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+          system(paste("aws s3 cp s3://",S3_BUCKET,"/",TronkoFile," ",basename(TronkoFile)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
           TronkoInput <- fread(file=basename(TronkoFile),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
           if(nrow(TronkoInput)>0){
             TronkoInput <- as.data.frame(TronkoInput)
@@ -158,7 +158,7 @@ tryCatch(
           ASVInputs <- list()
           m=1
           for(TronkoASV in TronkoASVs){
-            system(paste("aws s3 cp s3://",S3_Bucket,"/",TronkoASV," ",basename(TronkoASV)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+            system(paste("aws s3 cp s3://",S3_BUCKET,"/",TronkoASV," ",basename(TronkoASV)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
             ASVInput <- fread(file=basename(TronkoASV),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
             if(nrow(ASVInput)>0){
               print(paste(Primer,j,length(TronkoASVs)))
@@ -312,7 +312,7 @@ tryCatch(
         #Save Tronko output.
         TronkoOutput_Filename <- paste(Primer,".csv",sep="")
         write.table(x=TronkoProject,file=TronkoOutput_Filename,quote=FALSE,sep=",",row.names = FALSE)
-        system(paste("aws s3 cp ",TronkoOutput_Filename," s3://",S3_Bucket,"/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+        system(paste("aws s3 cp ",TronkoOutput_Filename," s3://",S3_BUCKET,"/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
         system(paste("rm ",TronkoOutput_Filename,sep=""))
       }
     }
@@ -323,7 +323,7 @@ tryCatch(
     colnames(TaxaCount_Project) <- c("SampleID","Unique_Taxa")
     TaxaCount_Filename <- paste("taxa_counts_",ProjectID,".json",sep="")
     write(toJSON(TaxaCount_Project),TaxaCount_Filename)
-    system(paste("aws s3 cp ",TaxaCount_Filename," s3://",S3_Bucket,"/projects/",ProjectID,"/plots/",TaxaCount_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("aws s3 cp ",TaxaCount_Filename," s3://",S3_BUCKET,"/projects/",ProjectID,"/plots/",TaxaCount_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
     system(paste("rm ",TaxaCount_Filename,sep=""))
     RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
     },
