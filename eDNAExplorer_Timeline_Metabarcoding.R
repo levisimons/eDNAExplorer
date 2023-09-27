@@ -17,6 +17,17 @@ require(uuid)
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
 
+readRenviron(".env")
+Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
+           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
+db_host <- Sys.getenv("db_host")
+db_port <- Sys.getenv("db_port")
+db_name <- Sys.getenv("db_name")
+db_user <- Sys.getenv("db_user")
+db_pass <- Sys.getenv("db_pass")
+gbif_dir <- Sys.getenv("GBIF_HOME")
+bucket <- Sys.getenv("S3_BUCKET")
+
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
   error_message <- paste("Error:", e$message)
@@ -28,25 +39,15 @@ process_error <- function(e, filename = "error.json") {
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://ednaexplorer/errors/timeline/", new_filename, sep = "")
+    paste("s3://",bucket,"/errors/timeline/", new_filename, sep = "")
   } else {
-    paste("s3://ednaexplorer/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
   system(paste("rm ",filename,sep=""))
   stop(error_message)
 }
-
-readRenviron(".env")
-Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
-           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
-db_host <- Sys.getenv("db_host")
-db_port <- Sys.getenv("db_port")
-db_name <- Sys.getenv("db_name")
-db_user <- Sys.getenv("db_user")
-db_pass <- Sys.getenv("db_pass")
-gbif_dir <- Sys.getenv("GBIF_HOME")
 
 # Get filtering parameters.
 # ProjectID:string
@@ -96,7 +97,7 @@ tryCatch(
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ", filename, " s3://ednaexplorer/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+    system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
     system(paste("rm ", filename, sep = ""))
     
     #Establish sql connection
@@ -126,7 +127,7 @@ tryCatch(
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
     TronkoFile_tmp <- paste(Marker,"_timeline_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
     SubsetFile <- paste("subset_timeline_",UUIDgenerate(),".csv",sep="")
     awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
@@ -191,7 +192,7 @@ tryCatch(
     filename <- tolower(filename)
     filename <- gsub(" ","_",filename)
     write(Timeline,filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
   },
   error = function(e) {
