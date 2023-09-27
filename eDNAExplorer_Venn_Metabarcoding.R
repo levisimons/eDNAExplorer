@@ -20,26 +20,45 @@ require(uuid)
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
 
+readRenviron(".env")
+Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
+           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
+db_host <- Sys.getenv("db_host")
+db_port <- Sys.getenv("db_port")
+db_name <- Sys.getenv("db_name")
+db_user <- Sys.getenv("db_user")
+db_pass <- Sys.getenv("db_pass")
+bucket <- Sys.getenv("S3_BUCKET")
+gbif_dir <- Sys.getenv("GBIF_HOME")
+
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
+  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message))
   write(json_content, filename)
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
+<<<<<<< HEAD
     paste("s3://",S3_BUCKET,"/errors/venn/", new_filename, sep = "")
   } else {
     paste("s3://",S3_BUCKET,"/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+=======
+    paste("s3://",bucket,"/errors/venn/", new_filename, sep = "")
+  } else {
+    dest_filename <- sub("\\.json$", ".build", filename)
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
   }
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
   system(paste("rm ",filename,sep=""))
   stop(error_message)
 }
 
+<<<<<<< HEAD
 
 readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
@@ -52,6 +71,8 @@ db_pass <- Sys.getenv("db_pass")
 gbif_dir <- Sys.getenv("GBIF_HOME")
 S3_BUCKET <- Sys.getenv("S3_BUCKET")
 
+=======
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
 # Get filtering parameters.
 # ProjectID:string
 # First_Date:string YYYY-MM-DD
@@ -109,9 +130,16 @@ tryCatch(
 tryCatch(
   {
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
+<<<<<<< HEAD
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), gsub(".json",".build",filename))
     system(paste("aws s3 cp ", filename, " s3://",S3_BUCKET,"/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+=======
+data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
+    write(toJSON(data_to_write), filename)
+    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
+    system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", Project_ID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ", filename, sep = ""))
     
     #Establish sql connection
@@ -147,7 +175,11 @@ tryCatch(
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
     TronkoFile_tmp <- paste(Marker,"_venn_",UUIDgenerate(),".csv",sep="")
+<<<<<<< HEAD
     system(paste("aws s3 cp s3://",S3_BUCKET,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+=======
+    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     #Check if file exists.
     if(file.info(TronkoFile_tmp)$size== 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
@@ -305,7 +337,11 @@ tryCatch(
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     write(toJSON(datasets),filename)
+<<<<<<< HEAD
     system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
   },
   error = function(e) {

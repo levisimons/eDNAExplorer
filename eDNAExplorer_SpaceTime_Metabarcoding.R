@@ -15,20 +15,40 @@ require(uuid)
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
 
+# Establish database credentials.
+readRenviron(".env")
+Sys.setenv(
+  "AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
+  "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY")
+)
+db_host <- Sys.getenv("db_host")
+db_port <- Sys.getenv("db_port")
+db_name <- Sys.getenv("db_name")
+db_user <- Sys.getenv("db_user")
+db_pass <- Sys.getenv("db_pass")
+bucket <- Sys.getenv("S3_BUCKET")
+
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
+  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message))
   write(json_content, filename)
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
+<<<<<<< HEAD
     paste("s3://",S3_BUCKET,"/errors/spacetime/", new_filename, sep = "")
   } else {
     paste("s3://",S3_BUCKET,"/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+=======
+    paste("s3://",bucket,"/errors/spacetime/", new_filename, sep = "")
+  } else {
+    dest_filename <- sub("\\.json$", ".build", filename)
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -36,6 +56,7 @@ process_error <- function(e, filename = "error.json") {
   stop(error_message)
 }
 
+<<<<<<< HEAD
 # Establish database credentials.
 readRenviron(".env")
 Sys.setenv(
@@ -49,6 +70,8 @@ db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 S3_BUCKET <- Sys.getenv("S3_BUCKET")
 
+=======
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
 # Get filtering parameters.
 # ProjectID:string
 # First_Date:string YYYY-MM-DD
@@ -104,8 +127,13 @@ tryCatch(
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
+<<<<<<< HEAD
     write(toJSON(data_to_write), gsub(".json",".build",filename))
     system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+    write(toJSON(data_to_write), filename)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -113,8 +141,13 @@ tryCatch(
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
+<<<<<<< HEAD
     write(toJSON(data_to_write), gsub(".json",".build",filename))
     system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+    write(toJSON(data_to_write), filename)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -122,8 +155,13 @@ tryCatch(
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
+<<<<<<< HEAD
     write(toJSON(data_to_write), gsub(".json",".build",filename))
     system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+    write(toJSON(data_to_write), filename)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -131,8 +169,13 @@ tryCatch(
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
+<<<<<<< HEAD
     write(toJSON(data_to_write), gsub(".json",".build",filename))
     system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+    write(toJSON(data_to_write), filename)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
     
     # Output a blank filtered taxonomy table as a default.  This gets overwritten is actual material exists.
@@ -140,7 +183,11 @@ tryCatch(
     filename <- gsub("_.csv",".csv",filename)
     filename <- tolower(filename)
     write.table(data.frame(error=c("No results"),message=c("Filter too stringent")),filename,quote=FALSE,sep=",",row.names = FALSE)
+<<<<<<< HEAD
     system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",Project_ID,"/tables/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/tables/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
     
     #Establish sql connection
@@ -176,7 +223,11 @@ tryCatch(
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
     TronkoFile_tmp <- paste(Marker,"_spacetime_",UUIDgenerate(),".csv",sep="")
+<<<<<<< HEAD
     system(paste("aws s3 cp s3://",S3_BUCKET,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+=======
+    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     #Check if file exists.
     if(file.info(TronkoFile_tmp)$size== 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
@@ -352,7 +403,11 @@ tryCatch(
     }
     datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
     write(toJSON(datasets), filename)
+<<<<<<< HEAD
     system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
     
     #Aggregate merged data by site to find taxa presence by site.
@@ -399,7 +454,11 @@ tryCatch(
     filename <- tolower(filename)
     datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
     write(toJSON(datasets), filename)
+<<<<<<< HEAD
     system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
     
     #Find taxa presence/absence by sample.
@@ -458,7 +517,11 @@ tryCatch(
     }
     datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
     write(toJSON(datasets), filename)
+<<<<<<< HEAD
     system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
     
     #Aggregate merged data by the appropriate time interval to find taxa presence by time.
@@ -511,7 +574,11 @@ tryCatch(
     
     datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
     write(toJSON(datasets), filename)
+<<<<<<< HEAD
     system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
     
     #Export filtered taxonomy table.
@@ -522,7 +589,11 @@ tryCatch(
     filename <- gsub("_.csv",".csv",filename)
     filename <- tolower(filename)
     write.table(TronkoTable,filename,quote=FALSE,sep=",",row.names = FALSE)
+<<<<<<< HEAD
     system(paste("aws s3 cp ",filename," s3://",S3_BUCKET,"/projects/",Project_ID,"/tables/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/tables/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",filename,sep=""))
   },
   error = function(e) {

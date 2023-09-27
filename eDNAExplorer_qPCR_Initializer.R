@@ -26,7 +26,9 @@ db_port <- Sys.getenv("db_port")
 db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
+bucket <- Sys.getenv("S3_BUCKET")
 Database_Driver <- dbDriver("PostgreSQL")
+
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
 
@@ -39,7 +41,7 @@ if (length(args)<1) {
 }
 
 #Read in qPCR project data.
-Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/projects",ProjectID,"QPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
+Project_Data <- system(paste("aws s3 cp s3://",bucket,"/projects",ProjectID,"QPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
 Project_Data <- gsub("[\r\n]", "", Project_Data)
 Project_Data <- read.table(text = Project_Data,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
 addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
@@ -54,7 +56,7 @@ Project_Data <- as.data.frame(Project_Data)
 
 Field_Variables <- colnames(Project_Data)[!(colnames(Project_Data) %in% c("Sample ID","Longitude","Latitude","Sample Date","Spatial Uncertainty"))]
 #Read in extracted metadata.
-Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput_qPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+Metadata_Extracted <- system(paste("aws s3 cp s3://",bucket,"/projects/",ProjectID,"/MetadataOutput_qPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
 Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A","#N/A"))
 Metadata_Extracted$Sample_Date <- as.Date(as.POSIXct(Metadata_Extracted$Sample_Date))
 
@@ -81,12 +83,12 @@ Target_Numbers <- unique(as.numeric(gsub("\\D", "", Target_Variables)))
 #Read in state/province boundaries.
 #Boundaries are from https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/
 sf_use_s2(FALSE)
-SpatialBucket <- system("aws s3 ls s3://ednaexplorer/spatial --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",intern=TRUE)
+SpatialBucket <- system("aws s3 ls s3://",bucket,"/spatial --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",intern=TRUE)
 SpatialBucket <- read.table(text = paste(SpatialBucket,sep = ""),header = FALSE)
 colnames(SpatialBucket) <- c("Date", "Time", "Size","Filename")
 SpatialFiles <- unique(SpatialBucket$Filename)
 for(SpatialFile in SpatialFiles){
-  system(paste("aws s3 cp s3://ednaexplorer/",SpatialFile," . --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+  system(paste("aws s3 cp s3://",bucket,"/",SpatialFile," . --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
 }
 GADM_1_Boundaries <- sf::st_read("ne_10m_admin_1_states_provinces.shp")
 #Determine the unique list of national and state/proving boundaries sample locations cover.

@@ -21,26 +21,48 @@ require(digest)
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
 
+#Establish database credentials.
+readRenviron(".env")
+Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
+           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
+db_host <- Sys.getenv("db_host")
+db_port <- Sys.getenv("db_port")
+db_name <- Sys.getenv("db_name")
+db_user <- Sys.getenv("db_user")
+db_pass <- Sys.getenv("db_pass")
+gbif_dir <- Sys.getenv("GBIF_HOME")
+bucket <- Sys.getenv("S3_BUCKET")
+taxonomy_home <- Sys.getenv("taxonomy_home")
+Database_Driver <- dbDriver("PostgreSQL")
+
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
+  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message))
   write(json_content, filename)
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   
   if(is.null(ProjectID) || ProjectID == "") {
+<<<<<<< HEAD
     s3_path <- paste("s3://",S3_BUCKET,"/errors/taxonomy/", new_filename, sep = "")
   } else {
     s3_path <- paste("s3://",S3_BUCKET,"/tronko_output/", ProjectID, "/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+=======
+    s3_path <- paste("s3://",bucket,"/errors/taxonomy/", new_filename, sep = "")
+  } else {
+    dest_filename <- sub("\\.json$", ".build", filename)
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
   stop(error_message)
 }
 
+<<<<<<< HEAD
 #Establish database credentials.
 readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
@@ -54,6 +76,8 @@ gbif_dir <- Sys.getenv("GBIF_HOME")
 S3_BUCKET <- Sys.getenv("S3_BUCKET")
 taxonomy_home <- Sys.getenv("taxonomy_home")
 Database_Driver <- dbDriver("PostgreSQL")
+=======
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
 
@@ -127,7 +151,11 @@ tryCatch(
     #Loop over primers to add Tronko-assign data to database, along with associate Phylopic metadata.
     for(Primer in Primers){
       #Read in Tronko-assign output files.  Standardize sample IDs within them.
+<<<<<<< HEAD
       TronkoBucket <- system(paste("aws s3 ls s3://",S3_BUCKET,"/projects/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+=======
+      TronkoBucket <- system(paste("aws s3 ls s3://",bucket,"/projects/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
       TronkoBucket <- read.table(text = paste(TronkoBucket,sep = ""),header = FALSE)
       colnames(TronkoBucket) <- c("Date", "Time", "Size","Filename")
       TronkoFiles <- unique(TronkoBucket$Filename)
@@ -138,7 +166,11 @@ tryCatch(
         i=1
         #TronkoHeaders <- c("Readname","Taxonomic_Path","Score","Forward_Mismatch","Reverse_Mismatch","Tree_Number","Node_Number")
         for(TronkoFile in TronkoFiles){
+<<<<<<< HEAD
           system(paste("aws s3 cp s3://",S3_BUCKET,"/",TronkoFile," ",basename(TronkoFile)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+=======
+          system(paste("aws s3 cp s3://",bucket,"/",TronkoFile," ",basename(TronkoFile)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
           TronkoInput <- fread(file=basename(TronkoFile),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
           if(nrow(TronkoInput)>0){
             TronkoInput <- as.data.frame(TronkoInput)
@@ -158,7 +190,11 @@ tryCatch(
           ASVInputs <- list()
           m=1
           for(TronkoASV in TronkoASVs){
+<<<<<<< HEAD
             system(paste("aws s3 cp s3://",S3_BUCKET,"/",TronkoASV," ",basename(TronkoASV)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+=======
+            system(paste("aws s3 cp s3://",bucket,"/",TronkoASV," ",basename(TronkoASV)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
             ASVInput <- fread(file=basename(TronkoASV),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
             if(nrow(ASVInput)>0){
               print(paste(Primer,j,length(TronkoASVs)))
@@ -312,7 +348,11 @@ tryCatch(
         #Save Tronko output.
         TronkoOutput_Filename <- paste(Primer,".csv",sep="")
         write.table(x=TronkoProject,file=TronkoOutput_Filename,quote=FALSE,sep=",",row.names = FALSE)
+<<<<<<< HEAD
         system(paste("aws s3 cp ",TronkoOutput_Filename," s3://",S3_BUCKET,"/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+=======
+        system(paste("aws s3 cp ",TronkoOutput_Filename," s3://",bucket,"/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
         system(paste("rm ",TronkoOutput_Filename,sep=""))
       }
     }
@@ -323,7 +363,11 @@ tryCatch(
     colnames(TaxaCount_Project) <- c("SampleID","Unique_Taxa")
     TaxaCount_Filename <- paste("taxa_counts_",ProjectID,".json",sep="")
     write(toJSON(TaxaCount_Project),TaxaCount_Filename)
+<<<<<<< HEAD
     system(paste("aws s3 cp ",TaxaCount_Filename," s3://",S3_BUCKET,"/projects/",ProjectID,"/plots/",TaxaCount_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+=======
+    system(paste("aws s3 cp ",TaxaCount_Filename," s3://",bucket,"/projects/",ProjectID,"/plots/",TaxaCount_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+>>>>>>> 0d3b7434b88bddc4c8e691c2784b19607721f4f6
     system(paste("rm ",TaxaCount_Filename,sep=""))
     RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
     },
