@@ -328,6 +328,12 @@ tryCatch(
     system(paste("aws s3 cp ",TaxaCount_Filename," s3://",bucket,"/projects/",ProjectID,"/plots/",TaxaCount_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
     system(paste("rm ",TaxaCount_Filename,sep=""))
     RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
+    
+    #Save log file.
+    filename <- paste(gsub(" ","_",date()),"eDNAExplorer_Metabarcoding_Taxonomy_Initializer.R.log",sep="_")
+    system(paste("echo > ",filename,sep=""))
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/log/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("rm ",filename))
   },
   error = function(e) {
     process_error(e, filename)

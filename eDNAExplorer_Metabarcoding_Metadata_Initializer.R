@@ -80,7 +80,7 @@ tryCatch(
 tryCatch(
   {
     #Find metabarcoding project data file and read it into a dataframe.
-    Project_Data <- system(paste("aws s3 cp s3://",bucket,"/projects",ProjectID,"METABARCODING.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
+    Project_Data <- system(paste("aws s3 cp s3://",bucket,"/projects/",ProjectID,"/METABARCODING.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     #Project_Data <- gsub("[\r\n]", "", Project_Data)
     if(length(Project_Data)==0) {
       stop("Error: No initial metadata present.")
@@ -186,6 +186,11 @@ tryCatch(
       dbWriteTable(con,"TronkoMetadata",Metadata,row.names=FALSE,append=TRUE)
     }
     RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
+    #Save log file.
+    filename <- paste(gsub(" ","_",date()),"eDNAExplorer_Metabarcoding_Metadata_Initializer.R.log",sep="_")
+    system(paste("echo > ",filename,sep=""))
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/log/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("rm ",filename))
   },
   error = function(e) {
     process_error(e, filename)
