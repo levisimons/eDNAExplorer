@@ -15,27 +15,6 @@ require(uuid)
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
 
-# Write error output to our json file.
-process_error <- function(e, filename = "error.json") {
-  error_message <- paste("Error:", e$message)
-  cat(error_message, "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
-  write(json_content, filename)
-  
-  timestamp <- as.integer(Sys.time()) # Get Unix timestamp
-  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
-  
-  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://ednaexplorer/errors/spacetime/", new_filename, sep = "")
-  } else {
-    paste("s3://ednaexplorer/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
-  }
-  
-  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
-  system(paste("rm ",filename,sep=""))
-  stop(error_message)
-}
-
 # Establish database credentials.
 readRenviron(".env")
 Sys.setenv(
@@ -47,6 +26,29 @@ db_port <- Sys.getenv("db_port")
 db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
+bucket <- Sys.getenv("S3_BUCKET")
+
+# Write error output to our json file.
+process_error <- function(e, filename = "error.json") {
+  error_message <- paste("Error:", e$message)
+  cat(error_message, "\n")
+  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message))
+  write(json_content, filename)
+  
+  timestamp <- as.integer(Sys.time()) # Get Unix timestamp
+  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  
+  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
+    paste("s3://",bucket,"/errors/spacetime/", new_filename, sep = "")
+  } else {
+    dest_filename <- sub("\\.json$", ".build", filename)
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+  }
+  
+  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
+  system(paste("rm ",filename,sep=""))
+  stop(error_message)
+}
 
 # Get filtering parameters.
 # ProjectID:string
@@ -58,7 +60,7 @@ db_pass <- Sys.getenv("db_pass")
 # CountThreshold:numeric Read count threshold for retaining samples
 # FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 # SpeciesList:string Name of csv file containing selected species list.
-# Rscript --vanilla eDNAExplorer_Spacetime_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
+# Rscript --vanilla ednaexplorer_staging_Spacetime_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
 
 tryCatch(
   {
@@ -104,7 +106,7 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -113,7 +115,7 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -122,7 +124,7 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -131,7 +133,7 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank filtered taxonomy table as a default.  This gets overwritten is actual material exists.
@@ -139,7 +141,7 @@ tryCatch(
     filename <- gsub("_.csv",".csv",filename)
     filename <- tolower(filename)
     write.table(data.frame(error=c("No results"),message=c("Filter too stringent")),filename,quote=FALSE,sep=",",row.names = FALSE)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/tables/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/tables/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     #Establish sql connection
@@ -175,7 +177,11 @@ tryCatch(
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
     TronkoFile_tmp <- paste(Marker,"_spacetime_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    #Check if file exists.
+    if(file.info(TronkoFile_tmp)$size== 0) {
+      stop("Error: Sample data frame is empty. Cannot proceed.")
+    }
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
     SubsetFile <- paste("subset_spacetime_",UUIDgenerate(),".csv",sep="")
     awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
@@ -301,9 +307,6 @@ tryCatch(
     SampleDB$totalSamples <- total_Samples
     SampleDB$filteredSamples <- num_filteredSamples
     
-    #Filter merged data.
-    #ProjectDB <- dplyr::inner_join(TronkoDB,ProjectDB,multiple="all")
-    
     #Aggregate merged data by the appropriate time interval to find taxa presence by time.
     ProjectDB_byTime <- ProjectDB %>% dplyr::distinct(site,SampleID,sample_date,Latin_Name,.keep_all=T) %>% 
       dplyr::group_by(sample_date,Latin_Name) %>% 
@@ -350,7 +353,7 @@ tryCatch(
     }
     datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
     write(toJSON(datasets), filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     #Aggregate merged data by site to find taxa presence by site.
@@ -397,7 +400,7 @@ tryCatch(
     filename <- tolower(filename)
     datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
     write(toJSON(datasets), filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     #Find taxa presence/absence by sample.
@@ -417,6 +420,10 @@ tryCatch(
     ProjectDB_bySample <- merge(all_combinations, ProjectDB_bySample, by = c("taxa", "SampleID"), all.x = TRUE)
     #Convert NA values to 0 in Presence.
     ProjectDB_bySample["Presence"][is.na(ProjectDB_bySample["Presence"])] <- 0
+    #Merge back in taxonomic information.
+    tmp <- ProjectDB[,c("Latin_Name","Common_Name","Image_URL")]
+    tmp <- tmp[!duplicated(tmp),]
+    ProjectDB_bySample <- dplyr::left_join(ProjectDB_bySample,tmp,by=c("taxa"="Latin_Name"))
     # Convert to a presence/absence data frame.
     ProjectDB_bySample <- tidyr::pivot_wider(ProjectDB_bySample, names_from = SampleID, values_from = Presence, values_fill = 0)
     ProjectDB_bySample <- as.data.frame(ProjectDB_bySample)
@@ -452,7 +459,7 @@ tryCatch(
     }
     datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
     write(toJSON(datasets), filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     #Aggregate merged data by the appropriate time interval to find taxa presence by time.
@@ -505,7 +512,7 @@ tryCatch(
     
     datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
     write(toJSON(datasets), filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     #Export filtered taxonomy table.
@@ -516,7 +523,7 @@ tryCatch(
     filename <- gsub("_.csv",".csv",filename)
     filename <- tolower(filename)
     write.table(TronkoTable,filename,quote=FALSE,sep=",",row.names = FALSE)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/tables/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/tables/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
   },
   error = function(e) {

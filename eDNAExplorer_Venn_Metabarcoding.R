@@ -20,27 +20,6 @@ require(uuid)
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
 
-# Write error output to our json file.
-process_error <- function(e, filename = "error.json") {
-  error_message <- paste("Error:", e$message)
-  cat(error_message, "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
-  write(json_content, filename)
-  
-  timestamp <- as.integer(Sys.time()) # Get Unix timestamp
-  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
-  
-  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://ednaexplorer/errors/venn/", new_filename, sep = "")
-  } else {
-    paste("s3://ednaexplorer/projects/", ProjectID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
-  }
-  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
-  system(paste("rm ",filename,sep=""))
-  stop(error_message)
-}
-
-
 readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
            "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
@@ -49,7 +28,29 @@ db_port <- Sys.getenv("db_port")
 db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
+bucket <- Sys.getenv("S3_BUCKET")
 gbif_dir <- Sys.getenv("GBIF_HOME")
+
+# Write error output to our json file.
+process_error <- function(e, filename = "error.json") {
+  error_message <- paste("Error:", e$message)
+  cat(error_message, "\n")
+  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message))
+  write(json_content, filename)
+  
+  timestamp <- as.integer(Sys.time()) # Get Unix timestamp
+  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  
+  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
+    paste("s3://",bucket,"/errors/venn/", new_filename, sep = "")
+  } else {
+    dest_filename <- sub("\\.json$", ".build", filename)
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+  }
+  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
+  system(paste("rm ",filename,sep=""))
+  stop(error_message)
+}
 
 # Get filtering parameters.
 # ProjectID:string
@@ -62,7 +63,7 @@ gbif_dir <- Sys.getenv("GBIF_HOME")
 # FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 # SpeciesList:string Name of csv file containing selected species list.
 # Geographic_Scale:string Local, State, or Nation
-# Rscript --vanilla eDNAExplorer_Venn_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList" "Geographic_Scale"
+# Rscript --vanilla ednaexplorer_staging_Venn_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList" "Geographic_Scale"
 
 tryCatch(
   {
@@ -110,7 +111,8 @@ tryCatch(
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ", filename, " s3://ednaexplorer/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
+    system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", Project_ID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
     system(paste("rm ", filename, sep = ""))
     
     #Establish sql connection
@@ -146,7 +148,11 @@ tryCatch(
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
     TronkoFile_tmp <- paste(Marker,"_venn_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://ednaexplorer/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    #Check if file exists.
+    if(file.info(TronkoFile_tmp)$size== 0) {
+      stop("Error: Sample data frame is empty. Cannot proceed.")
+    }
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
     SubsetFile <- paste("subset_venn_",UUIDgenerate(),".csv",sep="")
     awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
@@ -223,6 +229,21 @@ tryCatch(
       Taxa_GBIF <- na.omit(unique(Taxa_GBIF[,TaxonomicRank]))
       Taxa_GBIF <- as.data.frame(Taxa_GBIF)
       colnames(Taxa_GBIF) <- c("Taxa_Local")
+      
+      #Define results shared between eDNA and GBIF.
+      Both <- as.data.frame(intersect(Tronko_Taxa$eDNA,Taxa_GBIF$Taxa_Local))
+      colnames(Both) <- c("Both")
+      #Define eDNA results as those unique from GBIF
+      eDNA_only <- as.data.frame(Tronko_Taxa$eDNA[!(Tronko_Taxa$eDNA %in% Taxa_GBIF$Taxa_Local)])
+      colnames(eDNA_only) <- c("eDNA")
+      #Define GBIF results those unique from eDNA
+      GBIF_only <- as.data.frame(Taxa_GBIF$Taxa_Local[!(Taxa_GBIF$Taxa_Local %in% Tronko_Taxa$eDNA)])
+      colnames(GBIF_only) <- c("Taxa_Local")
+      
+      rm(Taxa_GBIF)
+      Taxa_GBIF <- GBIF_only
+      rm(Tronko_Taxa)
+      Tronko_Taxa <- eDNA_only
     }
     if(Geographic_Scale=="State"){
       #Clip GBIF occurrence locations by state/province boundaries.
@@ -233,6 +254,21 @@ tryCatch(
       Taxa_GBIF <- na.omit(unique(Taxa_GBIF[,TaxonomicRank]))
       Taxa_GBIF <- as.data.frame(Taxa_GBIF)
       colnames(Taxa_GBIF) <- c("Taxa_State")
+      
+      #Define results shared between eDNA and GBIF.
+      Both <- as.data.frame(intersect(Tronko_Taxa$eDNA,Taxa_GBIF$Taxa_State))
+      colnames(Both) <- c("Both")
+      #Define eDNA results as those unique from GBIF
+      eDNA_only <- as.data.frame(Tronko_Taxa$eDNA[!(Tronko_Taxa$eDNA %in% Taxa_GBIF$Taxa_State)])
+      colnames(eDNA_only) <- c("eDNA")
+      #Define GBIF results those unique from eDNA
+      GBIF_only <- as.data.frame(Taxa_GBIF$Taxa_State[!(Taxa_GBIF$Taxa_State %in% Tronko_Taxa$eDNA)])
+      colnames(GBIF_only) <- c("Taxa_State")
+      
+      rm(Taxa_GBIF)
+      Taxa_GBIF <- GBIF_only
+      rm(Tronko_Taxa)
+      Tronko_Taxa <- eDNA_only
     }
     if(Geographic_Scale=="Nation"){
       #Clip GBIF occurrence locations by national boundaries.
@@ -243,6 +279,21 @@ tryCatch(
       Taxa_GBIF <- na.omit(unique(Taxa_GBIF[,TaxonomicRank]))
       Taxa_GBIF <- as.data.frame(Taxa_GBIF)
       colnames(Taxa_GBIF) <- c("Taxa_Nation")
+      
+      #Define results shared between eDNA and GBIF.
+      Both <- as.data.frame(intersect(Tronko_Taxa$eDNA,Taxa_GBIF$Taxa_Nation))
+      colnames(Both) <- c("Both")
+      #Define eDNA results as those unique from GBIF
+      eDNA_only <- as.data.frame(Tronko_Taxa$eDNA[!(Tronko_Taxa$eDNA %in% Taxa_GBIF$Taxa_Nation)])
+      colnames(eDNA_only) <- c("eDNA")
+      #Define GBIF results those unique from eDNA
+      GBIF_only <- as.data.frame(Taxa_GBIF$Taxa_Nation[!(Taxa_GBIF$Taxa_Nation %in% Tronko_Taxa$eDNA)])
+      colnames(GBIF_only) <- c("Taxa_Nation")
+      
+      rm(Taxa_GBIF)
+      Taxa_GBIF <- GBIF_only
+      rm(Tronko_Taxa)
+      Tronko_Taxa <- eDNA_only
     }
     
     #Insert the number of samples and number of samples post-filtering as a return object.
@@ -250,12 +301,12 @@ tryCatch(
     colnames(SampleDB) <- c("totalSamples","filteredSamples")
     SampleDB$totalSamples <- total_Samples
     SampleDB$filteredSamples <- num_filteredSamples
-    datasets <- list(datasets = list(eDNA=Tronko_Taxa[,1],GBIF=Taxa_GBIF[,1],metadata=SampleDB))
+    datasets <- list(datasets = list(eDNA=Tronko_Taxa[,1],Both=Both[,1],GBIF=Taxa_GBIF[,1],metadata=SampleDB))
     filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     write(toJSON(datasets),filename)
-    system(paste("aws s3 cp ",filename," s3://ednaexplorer/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
   },
   error = function(e) {

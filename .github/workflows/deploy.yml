@@ -1,0 +1,28 @@
+name: Build & Test
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+jobs:
+  deploy:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    env:
+      SSH_ADDRESS: ${{ github.ref == 'refs/heads/main' && secrets.SSH_ADDRESS_PROD || secrets.SSH_ADDRESS }}
+      SSH_USER: ${{ github.ref == 'refs/heads/main' && secrets.SSH_USER_PROD || secrets.SSH_USER }}
+      SSH_PASSWORD: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PASSWORD_PROD || secrets.SSH_PASSWORD }}
+      DEPLOY_ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'PRODUCTION' || 'STAGING' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Deploy to server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+          echo "Attempting to deploy to $DEPLOY_ENVIRONMENT environment"
+          sshpass -p "${{ env.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -r ./* ${{ env.SSH_USER }}@${{ env.SSH_ADDRESS }}:/home/ubuntu/eDNAExplorer
+          echo "Finished deploying to $DEPLOY_ENVIRONMENT environment"
