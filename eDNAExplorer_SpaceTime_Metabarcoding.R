@@ -27,6 +27,7 @@ db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 bucket <- Sys.getenv("S3_BUCKET")
+home_dir <- Sys.getenv("home_dir")
 
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
@@ -37,11 +38,11 @@ process_error <- function(e, filename = "error.json") {
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  dest_filename <- sub("\\.json$", ".build", filename)
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
     paste("s3://",bucket,"/errors/spacetime/", new_filename, sep = "")
   } else {
-    dest_filename <- sub("\\.json$", ".build", filename)
     paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
@@ -60,7 +61,7 @@ process_error <- function(e, filename = "error.json") {
 # CountThreshold:numeric Read count threshold for retaining samples
 # FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 # SpeciesList:string Name of csv file containing selected species list.
-# Rscript --vanilla ednaexplorer_staging_Spacetime_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
+# Rscript --vanilla eDNAExplorer_Spacetime_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
 
 tryCatch(
   {
@@ -106,7 +107,8 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",dest_filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -115,7 +117,8 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",dest_filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -124,7 +127,8 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",dest_filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -133,7 +137,8 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",dest_filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank filtered taxonomy table as a default.  This gets overwritten is actual material exists.
@@ -234,27 +239,6 @@ tryCatch(
         filter(!!sym(TaxonomicRank) %in% TaxaList) %>%
         select(TaxonomicRanks[2:TaxonomicNum],TaxonomicKeyRanks,Common_Name,Image_URL)
       TaxonomyDB <- as.data.frame(TaxonomyInput)
-      #Figure out which taxonomy version is more complete.
-      TaxonomyDB$rankCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicRanks]))
-      TaxonomyDB$rankKeyCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicKeyRanks]))
-      TaxonomyDB <- TaxonomyDB %>%
-        group_by(!!sym(TaxonomicRank)) %>%
-        slice_max(order_by = rankCount, n = 1) %>%
-        ungroup()
-      TaxonomyDB <- TaxonomyDB %>%
-        group_by(!!sym(TaxonomicRank)) %>%
-        slice_max(order_by = rankKeyCount, n = 1) %>%
-        ungroup()
-      #Figure out which common_name is most common per taxon.
-      TaxonomyDB <- TaxonomyDB %>%
-        group_by(!!sym(TaxonomicRank)) %>%
-        mutate(Most_Common_Name = ifelse(all(is.na(Common_Name)), NA, names(which.max(table(Common_Name[!is.na(Common_Name)]))))) %>%
-        ungroup()
-      TaxonomyDB$Common_Name <- TaxonomyDB$Most_Common_Name
-      TaxonomyDB$Most_Common_Name <- NULL
-      TaxonomyDB <- as.data.frame(TaxonomyDB)
-      TaxonomyDB <- subset(TaxonomyDB, select = -grep("Key", colnames(TaxonomyDB)))
-      TaxonomyDB$rankCount <- NULL
       TaxonomyDB <- TaxonomyDB[!duplicated(TaxonomyDB),]
     }
     if (TaxonomicRank == "kingdom") {

@@ -33,6 +33,7 @@ db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 bucket <- Sys.getenv("S3_BUCKET")
+home_dir <- Sys.getenv("home_dir")
 
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
@@ -43,11 +44,11 @@ process_error <- function(e, filename = "error.json") {
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  dest_filename <- sub("\\.json$", ".build", filename)
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
     paste("s3://",bucket,"/errors/alpha/", new_filename, sep = "")
   } else {
-    dest_filename <- sub("\\.json$", ".build", filename)
     paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
@@ -55,6 +56,7 @@ process_error <- function(e, filename = "error.json") {
   system(paste("rm ",filename,sep=""))
   stop(error_message)
 }
+
 
 # Get filtering parameters.
 # ProjectID:string
