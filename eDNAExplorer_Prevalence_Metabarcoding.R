@@ -200,6 +200,27 @@ tryCatch(
         filter(!!sym(TaxonomicRank) %in% TaxaList) %>%
         select(TaxonomicRanks[2:TaxonomicNum],TaxonomicKeyRanks,Common_Name,Image_URL)
       TaxonomyDB <- as.data.frame(TaxonomyInput)
+      #Figure out which taxonomy version is more complete.
+      TaxonomyDB$rankCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicRanks]))
+      TaxonomyDB$rankKeyCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicKeyRanks]))
+      TaxonomyDB <- TaxonomyDB %>%
+        group_by(!!sym(TaxonomicRank)) %>%
+        slice_max(order_by = rankCount, n = 1) %>%
+        ungroup()
+      TaxonomyDB <- TaxonomyDB %>%
+        group_by(!!sym(TaxonomicRank)) %>%
+        slice_max(order_by = rankKeyCount, n = 1) %>%
+        ungroup()
+      #Figure out which common_name is most common per taxon.
+      TaxonomyDB <- TaxonomyDB %>%
+        group_by(!!sym(TaxonomicRank)) %>%
+        mutate(Most_Common_Name = ifelse(all(is.na(Common_Name)), NA, names(which.max(table(Common_Name[!is.na(Common_Name)]))))) %>%
+        ungroup()
+      TaxonomyDB$Common_Name <- TaxonomyDB$Most_Common_Name
+      TaxonomyDB$Most_Common_Name <- NULL
+      TaxonomyDB <- as.data.frame(TaxonomyDB)
+      TaxonomyDB <- subset(TaxonomyDB, select = -grep("Key", colnames(TaxonomyDB)))
+      TaxonomyDB$rankCount <- NULL
       TaxonomyDB <- TaxonomyDB[!duplicated(TaxonomyDB),]
     }
     if (TaxonomicRank == "kingdom") {
@@ -227,6 +248,7 @@ tryCatch(
       TronkoDB <- as.data.frame(TronkoDB)
       #Merge in taxonomy data.
       TronkoDB <- dplyr::left_join(TronkoDB, TaxonomyDB,na_matches="never")
+      #TronkoDB <- dplyr::left_join(TronkoDB,TaxonomyDB,by=c("
       TronkoDB$Image_URL <- ifelse(is.na(TronkoDB$Image_URL), 'https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png', TronkoDB$Image_URL)
       if (TaxonomicRank != "kingdom") {
         colnames(TronkoDB)[which(names(TronkoDB) == TaxonomicRank)] <- "Latin_Name"

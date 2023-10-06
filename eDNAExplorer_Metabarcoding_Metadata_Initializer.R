@@ -3,7 +3,7 @@ rm(list=ls())
 args = commandArgs(trailingOnly=TRUE)
 require(tidyr)
 require(sf)
-require(sp)
+#require(sp)
 require(lubridate)
 require(httr)
 require(curl)
@@ -43,18 +43,16 @@ process_error <- function(e, filename = "error.json") {
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  dest_filename <- sub("\\.json$", ".build", filename)
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
     paste("s3://",bucket,"/errors/metadata/", new_filename, sep = "")
   } else {
-    dest_filename <- sub("\\.json$", ".build", filename)
     paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
-  system("rm ne_10m_admin_1_states_provinces.*")
   system(paste("rm ",filename,sep=""))
-  RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
   stop(error_message)
 }
 
@@ -126,7 +124,7 @@ tryCatch(
     #Read in state/province boundaries.
     #Boundaries are from https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/
     sf_use_s2(FALSE)
-    SpatialBucket <- system("aws s3 ls s3://",bucket,"/spatial --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",intern=TRUE)
+    SpatialBucket <- system(paste("aws s3 ls s3://",bucket,"/spatial --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     SpatialBucket <- read.table(text = paste(SpatialBucket,sep = ""),header = FALSE)
     colnames(SpatialBucket) <- c("Date", "Time", "Size","Filename")
     SpatialFiles <- unique(SpatialBucket$Filename)

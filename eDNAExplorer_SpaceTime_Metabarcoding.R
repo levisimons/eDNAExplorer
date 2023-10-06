@@ -239,6 +239,27 @@ tryCatch(
         filter(!!sym(TaxonomicRank) %in% TaxaList) %>%
         select(TaxonomicRanks[2:TaxonomicNum],TaxonomicKeyRanks,Common_Name,Image_URL)
       TaxonomyDB <- as.data.frame(TaxonomyInput)
+      #Figure out which taxonomy version is more complete.
+      TaxonomyDB$rankCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicRanks]))
+      TaxonomyDB$rankKeyCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicKeyRanks]))
+      TaxonomyDB <- TaxonomyDB %>%
+        group_by(!!sym(TaxonomicRank)) %>%
+        slice_max(order_by = rankCount, n = 1) %>%
+        ungroup()
+      TaxonomyDB <- TaxonomyDB %>%
+        group_by(!!sym(TaxonomicRank)) %>%
+        slice_max(order_by = rankKeyCount, n = 1) %>%
+        ungroup()
+      #Figure out which common_name is most common per taxon.
+      TaxonomyDB <- TaxonomyDB %>%
+        group_by(!!sym(TaxonomicRank)) %>%
+        mutate(Most_Common_Name = ifelse(all(is.na(Common_Name)), NA, names(which.max(table(Common_Name[!is.na(Common_Name)]))))) %>%
+        ungroup()
+      TaxonomyDB$Common_Name <- TaxonomyDB$Most_Common_Name
+      TaxonomyDB$Most_Common_Name <- NULL
+      TaxonomyDB <- as.data.frame(TaxonomyDB)
+      TaxonomyDB <- subset(TaxonomyDB, select = -grep("Key", colnames(TaxonomyDB)))
+      TaxonomyDB$rankCount <- NULL
       TaxonomyDB <- TaxonomyDB[!duplicated(TaxonomyDB),]
     }
     if (TaxonomicRank == "kingdom") {
@@ -281,7 +302,7 @@ tryCatch(
     }
     
     #Merge Tronko output with sample metadata
-    ProjectDB <- dplyr::left_join(TronkoDB,Metadata[,c(CategoricalVariables,ContinuousVariables,FieldVars)],by=c("SampleID"="fastqid"))
+    ProjectDB <- dplyr::left_join(TronkoDB,Metadata[,c(CategoricalVariables,ContinuousVariables,FieldVars,"sample_id")],by=c("SampleID"="fastqid"))
     print(paste("ProjectDB",nrow(ProjectDB),ncol(ProjectDB)))
     
     # Generate the number of samples and number of samples post-filtering as a return object,
@@ -388,13 +409,13 @@ tryCatch(
     system(paste("rm ",filename,sep=""))
     
     #Find taxa presence/absence by sample.
-    ProjectDB_bySample <- ProjectDB[,c("Latin_Name","SampleID")]
+    ProjectDB_bySample <- ProjectDB[,c("Latin_Name","sample_id")]
     ProjectDB_bySample <- ProjectDB_bySample[!duplicated(ProjectDB_bySample),]
     ProjectDB_bySample <- ProjectDB_bySample[!is.na(ProjectDB_bySample[,"Latin_Name"]),]
     colnames(ProjectDB_bySample) <- c("taxa","SampleID")
     ProjectDB_bySample$Presence <- 1
     #Get sample names.
-    unique_samples <- unique(ProjectDB$SampleID)
+    unique_samples <- unique(ProjectDB$sample_id)
     # Create a reference data frame with all possible combinations of taxa and samples.
     all_combinations <- expand.grid(
       taxa = na.omit(unique(ProjectDB_bySample$taxa)),

@@ -44,11 +44,11 @@ process_error <- function(e, filename = "error.json") {
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  dest_filename <- sub("\\.json$", ".build", filename)
   
-  if(is.null(ProjectID) || ProjectID == "") {
-    s3_path <- paste("s3://",bucket,"/errors/taxonomy/", new_filename, sep = "")
+  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
+    paste("s3://",bucket,"/errors/taxonomy/", new_filename, sep = "")
   } else {
-    dest_filename <- sub("\\.json$", ".build", filename)
     paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
