@@ -21,26 +21,6 @@ require(digest)
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
 
-# Write error output to our json file.
-process_error <- function(e, filename = "error.json") {
-  error_message <- paste("Error:", e$message)
-  cat(error_message, "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
-  write(json_content, filename)
-  
-  timestamp <- as.integer(Sys.time()) # Get Unix timestamp
-  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
-  
-  if(is.null(ProjectID) || ProjectID == "") {
-    s3_path <- paste("s3://ednaexplorer/errors/taxonomy/", new_filename, sep = "")
-  } else {
-    s3_path <- paste("s3://ednaexplorer/tronko_output/", ProjectID, "/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
-  }
-  
-  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
-  stop(error_message)
-}
-
 #Establish database credentials.
 readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
@@ -51,8 +31,32 @@ db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 gbif_dir <- Sys.getenv("GBIF_HOME")
+bucket <- Sys.getenv("S3_BUCKET")
 taxonomy_home <- Sys.getenv("taxonomy_home")
 Database_Driver <- dbDriver("PostgreSQL")
+
+# Write error output to our json file.
+process_error <- function(e, filename = "error.json") {
+  error_message <- paste("Error:", e$message)
+  cat(error_message, "\n")
+  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message))
+  write(json_content, filename)
+  
+  timestamp <- as.integer(Sys.time()) # Get Unix timestamp
+  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  dest_filename <- sub("\\.json$", ".build", filename)
+  
+  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
+    paste("s3://",bucket,"/errors/taxonomy/", new_filename, sep = "")
+  } else {
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+  }
+  
+  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
+  system(paste("rm ",filename,sep=""))
+  stop(error_message)
+}
+
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
 
@@ -126,7 +130,7 @@ tryCatch(
     #Loop over primers to add Tronko-assign data to database, along with associate Phylopic metadata.
     for(Primer in Primers){
       #Read in Tronko-assign output files.  Standardize sample IDs within them.
-      TronkoBucket <- system(paste("aws s3 ls s3://ednaexplorer/projects/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+      TronkoBucket <- system(paste("aws s3 ls s3://",bucket,"/projects/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
       TronkoBucket <- read.table(text = paste(TronkoBucket,sep = ""),header = FALSE)
       colnames(TronkoBucket) <- c("Date", "Time", "Size","Filename")
       TronkoFiles <- unique(TronkoBucket$Filename)
@@ -137,7 +141,7 @@ tryCatch(
         i=1
         #TronkoHeaders <- c("Readname","Taxonomic_Path","Score","Forward_Mismatch","Reverse_Mismatch","Tree_Number","Node_Number")
         for(TronkoFile in TronkoFiles){
-          system(paste("aws s3 cp s3://ednaexplorer/",TronkoFile," ",basename(TronkoFile)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+          system(paste("aws s3 cp s3://",bucket,"/",TronkoFile," ",basename(TronkoFile)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
           TronkoInput <- fread(file=basename(TronkoFile),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
           if(nrow(TronkoInput)>0){
             TronkoInput <- as.data.frame(TronkoInput)
@@ -157,7 +161,7 @@ tryCatch(
           ASVInputs <- list()
           m=1
           for(TronkoASV in TronkoASVs){
-            system(paste("aws s3 cp s3://ednaexplorer/",TronkoASV," ",basename(TronkoASV)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+            system(paste("aws s3 cp s3://",bucket,"/",TronkoASV," ",basename(TronkoASV)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
             ASVInput <- fread(file=basename(TronkoASV),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
             if(nrow(ASVInput)>0){
               print(paste(Primer,j,length(TronkoASVs)))
@@ -311,119 +315,27 @@ tryCatch(
         #Save Tronko output.
         TronkoOutput_Filename <- paste(Primer,".csv",sep="")
         write.table(x=TronkoProject,file=TronkoOutput_Filename,quote=FALSE,sep=",",row.names = FALSE)
-        system(paste("aws s3 cp ",TronkoOutput_Filename," s3://ednaexplorer/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+        system(paste("aws s3 cp ",TronkoOutput_Filename," s3://",bucket,"/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
         system(paste("rm ",TronkoOutput_Filename,sep=""))
-        
-        #Create database of Phylopic images and common names for taxa.
-        TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-        TaxonomicKeyRanks <- c("speciesKey","genusKey","familyKey","orderKey","classKey","phylumKey","kingdomKey")
-        TaxaDB <- TronkoDB[,TaxonomicRanks]
-        TaxaDB <- TaxaDB[!duplicated(TaxaDB),]
-        TaxaDB$Taxon <- TaxaDB[cbind(1:nrow(TaxaDB), max.col(!is.na(TaxaDB), ties.method = 'last'))]
-        TaxaDB$rank <- TaxonomicRanks[max.col(!is.na(TaxaDB[TaxonomicRanks]), ties.method="last")]
-        #Create unique ID for the Phylopic database.
-        TaxaDB$UniqueID <- sapply(paste(TaxaDB$species,TaxaDB$genus,TaxaDB$family,TaxaDB$order,TaxaDB$class,TaxaDB$phylum,TaxaDB$kingdom,TaxaDB$Taxon,TaxaDB$rank),digest,algo="md5")
-        
-        #Check for pre-existing Phylopic database entries.  Only leave new and unique entries to append.
-        if(dbExistsTable(con,"Taxonomy")==TRUE){
-          Phylopic_Check <-  tbl(con,"Taxonomy")
-          Phylopic_IDs <- TaxaDB$UniqueID
-          Phylopic_Check <- Phylopic_Check %>% filter(UniqueID %in% Phylopic_IDs)
-          Phylopic_Check <- as.data.frame(Phylopic_Check)
-          Phylopic_Check_IDs <- Phylopic_Check$UniqueID
-          TaxaDB <- TaxaDB[!(Phylopic_IDs %in% Phylopic_Check_IDs),]
-        } 
-        if(dbExistsTable(con,"Taxonomy")==FALSE){
-          TaxaDB <- TaxaDB
-        }
-        
-        #Get Phylopic urls and common names for each unique taxon to append to database.
-        if(nrow(TaxaDB)>0){
-          GBIF_Keys <- c()
-          GBIF_Backbone <- read.table(file=paste(taxonomy_home,"gbif_backbone.tsv",sep="/"),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"",as.is=TRUE, encoding = "UTF-8",na = c("", "NA", "N/A"))
-          for(n in 1:nrow(TaxaDB)){
-            GBIF_Key <- TaxaDB[n,]
-            GBIF_Key_ranks <- c("kingdom","phylum","class","order","family","genus","species")[!is.na(GBIF_Key[,c("kingdom","phylum","class","order","family","genus","species")])]
-            for(TaxonomicRank in GBIF_Key_ranks){
-              tmp <- GBIF_Backbone[GBIF_Backbone[,TaxonomicRank]==GBIF_Key[,TaxonomicRank] & !is.na(GBIF_Backbone[,TaxonomicRank]) & GBIF_Backbone$rank==TaxonomicRank & GBIF_Backbone[,TaxonomicRank]==GBIF_Backbone$canonicalName,paste(TaxonomicRank,"Key",sep="")]
-              GBIF_Key[,paste(TaxonomicRank,"Key",sep="")] <- tmp[1] 
-              #print(paste(TaxonomicRank,GBIF_Key[,TaxonomicRank],tmp))
-            }
-            if(GBIF_Key$rank!="superkingdom"){
-              remaining_key_ranks <- paste(GBIF_Key_ranks, "Key", sep = "")
-              terminal_key_rank <- remaining_key_ranks[max.col(!is.na(GBIF_Key[remaining_key_ranks]), ties.method="last")]
-              terminal_taxonID <- GBIF_Key[,terminal_key_rank]
-              if(!is.na(terminal_taxonID)){
-                GBIF_Key[,"Common_Name"] <- GBIF_Backbone[GBIF_Backbone$taxonID==terminal_taxonID,"Common_Name"]
-              }
-              if(is.na(terminal_taxonID)){
-                GBIF_Key[,"Common_Name"] <- NA
-              }
-            }
-            if(GBIF_Key$rank=="superkingdom"){
-              GBIF_Key[,"Common_Name"] <- NA
-            }
-            
-            #Get GBIF backbone for querying Phylopic images
-            match_ranks <- GBIF_Key[,c(colnames(GBIF_Key)[colnames(GBIF_Key) %in% TaxonomicKeyRanks]),drop=F]
-            if(!is.null(dim(match_ranks))){
-              match_ranks <- match_ranks[,colSums(is.na(match_ranks))<nrow(match_ranks),drop=F]
-              match_ranks <- colnames(match_ranks)
-            }
-            if(length(match_ranks)>0){
-              match_ranks <- match_ranks[order(match(match_ranks,TaxonomicKeyRanks[length(TaxonomicKeyRanks):1]))]
-              Taxon_Backbone <- as.numeric(GBIF_Key[,match_ranks[length(match_ranks):1]])
-              #Get Phylopic images for each taxon
-              res <- httr::GET(url=paste("https://api.phylopic.org/resolve/gbif.org/species?embed_primaryImage=true&objectIDs=",paste(Taxon_Backbone,collapse=","),sep=""),config = httr::config(connecttimeout = 100))
-              Sys.sleep(0.5)
-              test <- fromJSON(rawToChar(res$content))
-              Taxon_Image <- test[["_embedded"]][["primaryImage"]][["_links"]][["rasterFiles"]][["href"]][[1]]
-              if(is.null(Taxon_Image)){
-                Taxon_Image <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
-              }
-              print(paste(n,GBIF_Key$rank,GBIF_Key$Taxon,Taxon_Image))
-              GBIF_Key$Image_URL <- Taxon_Image
-            }
-            if(length(match_ranks)==0){
-              GBIF_Key$Common_Name <- NA
-              GBIF_Key$Image_URL <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
-            }
-            
-            GBIF_Keys[[n]] <- GBIF_Key
-          }
-          GBIF_Keys <- rbindlist(GBIF_Keys, use.names=TRUE, fill=TRUE)
-          GBIF_Keys <- as.data.frame(GBIF_Keys)
-          
-          #Create unique ID for the Phylopic database.
-          GBIF_Keys$UniqueID <- sapply(paste(GBIF_Keys$species,GBIF_Keys$genus,GBIF_Keys$family,GBIF_Keys$order,GBIF_Keys$class,GBIF_Keys$phylum,GBIF_Keys$kingdom,GBIF_Keys$Taxon,GBIF_Keys$rank),digest,algo="md5")
-          
-          #Check for redundant data.
-          #Add new Phylopic data.
-          if(dbExistsTable(con,"Taxonomy")==TRUE){
-            Phylopic_Check <-  tbl(con,"Taxonomy")
-            Phylopic_IDs <- GBIF_Keys$UniqueID
-            Phylopic_Check <- Phylopic_Check %>% filter(UniqueID %in% Phylopic_IDs)
-            Phylopic_Check <- as.data.frame(Phylopic_Check)
-            Phylopic_Check_IDs <- Phylopic_Check$UniqueID
-            Phylopic_Append <- GBIF_Keys[!(Phylopic_IDs %in% Phylopic_Check_IDs),]
-            dbWriteTable(con,"Taxonomy",Phylopic_Append,row.names=FALSE,append=TRUE)
-          } 
-          if(dbExistsTable(con,"Taxonomy")==FALSE){
-            dbWriteTable(con,"Taxonomy",GBIF_Keys,row.names=FALSE,append=TRUE)
-          } 
-        }
       }
     }
+    
     #Get the number of unique organisms per sample per project.
     TaxaCounts <- rbindlist(TaxaCount, use.names=TRUE, fill=TRUE)
     TaxaCount_Project <- as.data.frame(table(TaxaCounts[,c("SampleID")]))
     colnames(TaxaCount_Project) <- c("SampleID","Unique_Taxa")
     TaxaCount_Filename <- paste("taxa_counts_",ProjectID,".json",sep="")
     write(toJSON(TaxaCount_Project),TaxaCount_Filename)
-    system(paste("aws s3 cp ",TaxaCount_Filename," s3://ednaexplorer/projects/",ProjectID,"/plots/",TaxaCount_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("aws s3 cp ",TaxaCount_Filename," s3://",bucket,"/projects/",ProjectID,"/plots/",TaxaCount_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
     system(paste("rm ",TaxaCount_Filename,sep=""))
     RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
-    },
+    
+    #Save log file.
+    filename <- paste(gsub(" ","_",date()),"eDNAExplorer_Metabarcoding_Taxonomy_Initializer.R.log",sep="_")
+    system(paste("echo > ",filename,sep=""))
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/log/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("rm ",filename))
+  },
   error = function(e) {
     process_error(e, filename)
   }
