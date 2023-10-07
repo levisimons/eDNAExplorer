@@ -27,6 +27,7 @@ db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 bucket <- Sys.getenv("S3_BUCKET")
+home_dir <- Sys.getenv("home_dir")
 
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
@@ -37,11 +38,11 @@ process_error <- function(e, filename = "error.json") {
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  dest_filename <- sub("\\.json$", ".build", filename)
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
     paste("s3://",bucket,"/errors/spacetime/", new_filename, sep = "")
   } else {
-    dest_filename <- sub("\\.json$", ".build", filename)
     paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
@@ -60,7 +61,7 @@ process_error <- function(e, filename = "error.json") {
 # CountThreshold:numeric Read count threshold for retaining samples
 # FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 # SpeciesList:string Name of csv file containing selected species list.
-# Rscript --vanilla ednaexplorer_staging_Spacetime_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
+# Rscript --vanilla eDNAExplorer_Spacetime_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
 
 tryCatch(
   {
@@ -106,7 +107,8 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",dest_filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -115,7 +117,8 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",dest_filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -124,7 +127,8 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",dest_filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
@@ -133,7 +137,8 @@ tryCatch(
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",dest_filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Output a blank filtered taxonomy table as a default.  This gets overwritten is actual material exists.
@@ -297,7 +302,7 @@ tryCatch(
     }
     
     #Merge Tronko output with sample metadata
-    ProjectDB <- dplyr::left_join(TronkoDB,Metadata[,c(CategoricalVariables,ContinuousVariables,FieldVars)],by=c("SampleID"="fastqid"))
+    ProjectDB <- dplyr::left_join(TronkoDB,Metadata[,c(CategoricalVariables,ContinuousVariables,FieldVars,"sample_id")],by=c("SampleID"="fastqid"))
     print(paste("ProjectDB",nrow(ProjectDB),ncol(ProjectDB)))
     
     # Generate the number of samples and number of samples post-filtering as a return object,
@@ -404,13 +409,13 @@ tryCatch(
     system(paste("rm ",filename,sep=""))
     
     #Find taxa presence/absence by sample.
-    ProjectDB_bySample <- ProjectDB[,c("Latin_Name","SampleID")]
+    ProjectDB_bySample <- ProjectDB[,c("Latin_Name","sample_id")]
     ProjectDB_bySample <- ProjectDB_bySample[!duplicated(ProjectDB_bySample),]
     ProjectDB_bySample <- ProjectDB_bySample[!is.na(ProjectDB_bySample[,"Latin_Name"]),]
     colnames(ProjectDB_bySample) <- c("taxa","SampleID")
     ProjectDB_bySample$Presence <- 1
     #Get sample names.
-    unique_samples <- unique(ProjectDB$SampleID)
+    unique_samples <- unique(ProjectDB$sample_id)
     # Create a reference data frame with all possible combinations of taxa and samples.
     all_combinations <- expand.grid(
       taxa = na.omit(unique(ProjectDB_bySample$taxa)),
