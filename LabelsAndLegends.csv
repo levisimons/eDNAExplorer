@@ -1,0 +1,13 @@
+Environmental_Variable,Legend,x_axis
+site,site,site
+grtgroup,USDA soil taxonomy great group,soil great group name
+biome_type,potential biome,biome category name
+iucn_cat,protected area status ,"IUCN category such as ""strict nature reserve"""
+eco_name,ecoregion,ecoregion name
+hybas_id,watershed id (from hydrosheds),watershed id
+bio01,degrees celsius,temperature
+bio12,rainfall in mm,mm rainfall
+ghm,global human modification index (0-1),measure on the index
+elevation,elevation in meters,elevation number
+ndvi,photosynthetic activity (-1 to 1),ndvi number
+average_radiance,brightness in nanowatts/sr/cm2,nighttime brightness
