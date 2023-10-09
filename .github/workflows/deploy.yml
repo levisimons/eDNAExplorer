@@ -21,7 +21,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Set up SSH key
-      - run: |
+        run: |
           echo "${{ env.SSH_KEY }}" > ssh_key.pem
           chmod 600 ssh_key.pem
           ssh-add ./ssh_key.pem
