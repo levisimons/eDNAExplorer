@@ -3,7 +3,7 @@ rm(list=ls())
 args = commandArgs(trailingOnly=TRUE)
 require(tidyr)
 require(sf)
-require(sp)
+#require(sp)
 require(lubridate)
 require(httr)
 require(curl)
@@ -22,29 +22,6 @@ require(anytime)
 # Fetch project ID early so we can use it for error output when possible.
 ProjectID <- args[1]
 
-# Write error output to our json file.
-process_error <- function(e, filename = "error.json") {
-  error_message <- paste("Error:", e$message)
-  cat(error_message, "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, error = error_message))
-  write(json_content, filename)
-  
-  timestamp <- as.integer(Sys.time()) # Get Unix timestamp
-  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
-  
-  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://ednaexplorer/errors/metadata/", new_filename, sep = "")
-  } else {
-    paste("s3://ednaexplorer/tronko_output/", ProjectID, "/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
-  }
-  
-  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
-  system("rm ne_10m_admin_1_states_provinces.*")
-  system(paste("rm ",filename,sep=""))
-  RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
-  stop(error_message)
-}
-
 #Establish database credentials.
 readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
@@ -54,7 +31,31 @@ db_port <- Sys.getenv("db_port")
 db_name <- Sys.getenv("db_name")
 db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
+bucket <- Sys.getenv("S3_BUCKET")
 Database_Driver <- dbDriver("PostgreSQL")
+
+# Write error output to our json file.
+process_error <- function(e, filename = "error.json") {
+  error_message <- paste("Error:", e$message)
+  cat(error_message, "\n")
+  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message))
+  write(json_content, filename)
+  
+  timestamp <- as.integer(Sys.time()) # Get Unix timestamp
+  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  dest_filename <- sub("\\.json$", ".build", filename)
+  
+  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
+    paste("s3://",bucket,"/errors/metadata/", new_filename, sep = "")
+  } else {
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+  }
+  
+  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
+  system(paste("rm ",filename,sep=""))
+  stop(error_message)
+}
+
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
 
@@ -77,7 +78,7 @@ tryCatch(
 tryCatch(
   {
     #Find metabarcoding project data file and read it into a dataframe.
-    Project_Data <- system(paste("aws s3 cp s3://ednaexplorer/projects",ProjectID,"METABARCODING.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
+    Project_Data <- system(paste("aws s3 cp s3://",bucket,"/projects/",ProjectID,"/METABARCODING.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     #Project_Data <- gsub("[\r\n]", "", Project_Data)
     if(length(Project_Data)==0) {
       stop("Error: No initial metadata present.")
@@ -99,7 +100,7 @@ tryCatch(
     #Get field variables from initial metadata.  These are generally project-specific non-required variables.
     Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% Required_Variables)]
     #Read in extracted metadata.
-    Metadata_Extracted <- system(paste("aws s3 cp s3://ednaexplorer/projects/",ProjectID,"/MetadataOutput_Metabarcoding.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    Metadata_Extracted <- system(paste("aws s3 cp s3://",bucket,"/projects/",ProjectID,"/MetadataOutput_Metabarcoding.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     if(length(Metadata_Extracted)==0) {
       stop("Error: No extracted metadata present.")
     }
@@ -123,12 +124,12 @@ tryCatch(
     #Read in state/province boundaries.
     #Boundaries are from https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/
     sf_use_s2(FALSE)
-    SpatialBucket <- system("aws s3 ls s3://ednaexplorer/spatial --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",intern=TRUE)
+    SpatialBucket <- system(paste("aws s3 ls s3://",bucket,"/spatial --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     SpatialBucket <- read.table(text = paste(SpatialBucket,sep = ""),header = FALSE)
     colnames(SpatialBucket) <- c("Date", "Time", "Size","Filename")
     SpatialFiles <- unique(SpatialBucket$Filename)
     for(SpatialFile in SpatialFiles){
-      system(paste("aws s3 cp s3://ednaexplorer/",SpatialFile," . --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+      system(paste("aws s3 cp s3://",bucket,"/",SpatialFile," . --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
     }
     GADM_1_Boundaries <- sf::st_read("ne_10m_admin_1_states_provinces.shp")
     #Determine the unique list of national and state/proving boundaries sample locations cover.
@@ -183,6 +184,11 @@ tryCatch(
       dbWriteTable(con,"TronkoMetadata",Metadata,row.names=FALSE,append=TRUE)
     }
     RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
+    #Save log file.
+    filename <- paste(gsub(" ","_",date()),"eDNAExplorer_Metabarcoding_Metadata_Initializer.R.log",sep="_")
+    system(paste("echo > ",filename,sep=""))
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/log/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("rm ",filename))
   },
   error = function(e) {
     process_error(e, filename)

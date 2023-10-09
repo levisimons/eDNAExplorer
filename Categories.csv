@@ -1,0 +1,274 @@
+value,description,Environmental_Variable
+0,nodata,grtgroup
+1,albaqualfs,grtgroup
+2,cryaqualfs,grtgroup
+4,durixeralfs,grtgroup
+6,endoaqualfs,grtgroup
+7,epiaqualfs,grtgroup
+9,fragiaqualfs,grtgroup
+10,fragiudalfs,grtgroup
+11,fragixeralfs,grtgroup
+12,fraglossudalfs,grtgroup
+13,glossaqualfs,grtgroup
+14,glossocryalfs,grtgroup
+15,glossudalfs,grtgroup
+16,haplocryalfs,grtgroup
+17,haploxeralfs,grtgroup
+18,hapludalfs,grtgroup
+19,haplustalfs,grtgroup
+25,natraqualfs,grtgroup
+26,natrixeralfs,grtgroup
+27,natrudalfs,grtgroup
+28,natrustalfs,grtgroup
+29,palecryalfs,grtgroup
+30,paleudalfs,grtgroup
+31,paleustalfs,grtgroup
+32,palexeralfs,grtgroup
+38,rhodustalfs,grtgroup
+39,vermaqualfs,grtgroup
+41,eutroboralfs,grtgroup
+42,ochraqualfs,grtgroup
+43,glossoboralfs,grtgroup
+44,cryoboralfs,grtgroup
+45,natriboralfs,grtgroup
+46,paleboralfs,grtgroup
+50,cryaquands,grtgroup
+58,fulvicryands,grtgroup
+59,fulvudands,grtgroup
+61,haplocryands,grtgroup
+63,haploxerands,grtgroup
+64,hapludands,grtgroup
+74,udivitrands,grtgroup
+75,ustivitrands,grtgroup
+76,vitraquands,grtgroup
+77,vitricryands,grtgroup
+80,vitrixerands,grtgroup
+82,aquicambids,grtgroup
+83,aquisalids,grtgroup
+85,argidurids,grtgroup
+86,argigypsids,grtgroup
+87,calciargids,grtgroup
+89,calcigypsids,grtgroup
+90,gypsiargids,grtgroup
+92,haplargids,grtgroup
+93,haplocalcids,grtgroup
+94,haplocambids,grtgroup
+96,haplodurids,grtgroup
+97,haplogypsids,grtgroup
+98,haplosalids,grtgroup
+99,natrargids,grtgroup
+100,natridurids,grtgroup
+101,natrigypsids,grtgroup
+102,paleargids,grtgroup
+103,petroargids,grtgroup
+104,petrocalcids,grtgroup
+105,petrocambids,grtgroup
+107,petrogypsids,grtgroup
+110,calciorthids,grtgroup
+111,camborthids,grtgroup
+112,paleorthids,grtgroup
+113,durorthids,grtgroup
+114,durargids,grtgroup
+115,gypsiorthids,grtgroup
+116,nadurargids,grtgroup
+118,cryaquents,grtgroup
+119,cryofluvents,grtgroup
+120,cryopsamments,grtgroup
+121,cryorthents,grtgroup
+122,endoaquents,grtgroup
+123,epiaquents,grtgroup
+124,fluvaquents,grtgroup
+126,frasiwassents,grtgroup
+131,hydraquents,grtgroup
+133,psammaquents,grtgroup
+134,psammowassents,grtgroup
+135,quartzipsamments,grtgroup
+136,sulfaquents,grtgroup
+137,sulfiwassents,grtgroup
+138,torrifluvents,grtgroup
+139,torriorthents,grtgroup
+140,torripsamments,grtgroup
+141,udifluvents,grtgroup
+142,udipsamments,grtgroup
+143,udorthents,grtgroup
+144,ustifluvents,grtgroup
+145,ustipsamments,grtgroup
+146,ustorthents,grtgroup
+147,xerofluvents,grtgroup
+148,xeropsamments,grtgroup
+149,xerorthents,grtgroup
+153,udarents,grtgroup
+154,torriarents,grtgroup
+155,xerarents,grtgroup
+179,cryofibrists,grtgroup
+180,cryofolists,grtgroup
+181,cryohemists,grtgroup
+182,cryosaprists,grtgroup
+183,frasiwassists,grtgroup
+184,haplofibrists,grtgroup
+185,haplohemists,grtgroup
+186,haplosaprists,grtgroup
+189,sphagnofibrists,grtgroup
+190,sulfihemists,grtgroup
+191,sulfisaprists,grtgroup
+196,udifolists,grtgroup
+201,borosaprists,grtgroup
+202,medisaprists,grtgroup
+203,borohemists,grtgroup
+206,calcicryepts,grtgroup
+207,calciustepts,grtgroup
+208,calcixerepts,grtgroup
+209,cryaquepts,grtgroup
+210,durixerepts,grtgroup
+212,durustepts,grtgroup
+213,dystrocryepts,grtgroup
+215,dystroxerepts,grtgroup
+216,dystrudepts,grtgroup
+217,dystrustepts,grtgroup
+218,endoaquepts,grtgroup
+219,epiaquepts,grtgroup
+220,eutrudepts,grtgroup
+221,fragiaquepts,grtgroup
+222,fragiudepts,grtgroup
+225,halaquepts,grtgroup
+226,haplocryepts,grtgroup
+228,haploxerepts,grtgroup
+229,haplustepts,grtgroup
+230,humaquepts,grtgroup
+231,humicryepts,grtgroup
+233,humixerepts,grtgroup
+234,humudepts,grtgroup
+235,humustepts,grtgroup
+245,ustochrepts,grtgroup
+246,eutrochrepts,grtgroup
+247,dystrochrepts,grtgroup
+248,eutrocryepts,grtgroup
+249,haplaquepts,grtgroup
+250,xerochrepts,grtgroup
+251,cryochrepts,grtgroup
+252,fragiochrepts,grtgroup
+253,haplumbrepts,grtgroup
+254,cryumbrepts,grtgroup
+255,dystropepts,grtgroup
+256,vitrandepts,grtgroup
+268,argialbolls,grtgroup
+269,argiaquolls,grtgroup
+270,argicryolls,grtgroup
+271,argiudolls,grtgroup
+272,argiustolls,grtgroup
+273,argixerolls,grtgroup
+274,calciaquolls,grtgroup
+275,calcicryolls,grtgroup
+276,calciudolls,grtgroup
+277,calciustolls,grtgroup
+278,calcixerolls,grtgroup
+279,cryaquolls,grtgroup
+280,cryrendolls,grtgroup
+283,durixerolls,grtgroup
+284,durustolls,grtgroup
+285,endoaquolls,grtgroup
+286,epiaquolls,grtgroup
+287,haplocryolls,grtgroup
+289,haploxerolls,grtgroup
+290,hapludolls,grtgroup
+291,haplustolls,grtgroup
+292,haprendolls,grtgroup
+294,natraquolls,grtgroup
+296,natrixerolls,grtgroup
+297,natrudolls,grtgroup
+298,natrustolls,grtgroup
+299,palecryolls,grtgroup
+300,paleudolls,grtgroup
+301,paleustolls,grtgroup
+302,palexerolls,grtgroup
+303,vermudolls,grtgroup
+306,haploborolls,grtgroup
+307,argiborolls,grtgroup
+308,haplaquolls,grtgroup
+309,cryoborolls,grtgroup
+310,natriborolls,grtgroup
+311,calciborolls,grtgroup
+312,paleborolls,grtgroup
+342,alaquods,grtgroup
+343,alorthods,grtgroup
+345,duraquods,grtgroup
+348,durorthods,grtgroup
+349,endoaquods,grtgroup
+350,epiaquods,grtgroup
+351,fragiaquods,grtgroup
+353,fragiorthods,grtgroup
+354,haplocryods,grtgroup
+356,haplohumods,grtgroup
+357,haplorthods,grtgroup
+358,humicryods,grtgroup
+367,haplaquods,grtgroup
+368,cryorthods,grtgroup
+370,albaquults,grtgroup
+371,endoaquults,grtgroup
+372,epiaquults,grtgroup
+373,fragiaquults,grtgroup
+374,fragiudults,grtgroup
+375,haplohumults,grtgroup
+376,haploxerults,grtgroup
+377,hapludults,grtgroup
+378,haplustults,grtgroup
+381,kandiudults,grtgroup
+385,kanhapludults,grtgroup
+387,paleaquults,grtgroup
+388,palehumults,grtgroup
+389,paleudults,grtgroup
+390,paleustults,grtgroup
+391,palexerults,grtgroup
+396,rhodudults,grtgroup
+399,umbraquults,grtgroup
+401,ochraquults,grtgroup
+403,calciaquerts,grtgroup
+405,calciusterts,grtgroup
+406,calcixererts,grtgroup
+409,dystraquerts,grtgroup
+410,dystruderts,grtgroup
+412,endoaquerts,grtgroup
+413,epiaquerts,grtgroup
+414,gypsitorrerts,grtgroup
+415,gypsiusterts,grtgroup
+417,haplotorrerts,grtgroup
+418,haploxererts,grtgroup
+419,hapluderts,grtgroup
+420,haplusterts,grtgroup
+422,natraquerts,grtgroup
+424,salitorrerts,grtgroup
+429,chromusterts,grtgroup
+430,pellusterts,grtgroup
+431,chromoxererts,grtgroup
+432,pelluderts,grtgroup
+433,torrerts,grtgroup
+1,tropical evergreen broadleaf forest,biome_type
+2,tropical semi-evergreen broadleaf forest,biome_type
+3,tropical deciduous broadleaf forest and woodland,biome_type
+4,warm-temperate evergreen broadleaf and mixed forest,biome_type
+7,cool-temperate rainforest,biome_type
+8,cool evergreen needleleaf forest,biome_type
+9,cool mixed forest,biome_type
+13,temperate deciduous broadleaf forest,biome_type
+14,cold deciduous forest,biome_type
+15,cold evergreen needleleaf forest,biome_type
+16,temperate sclerophyll woodland and shrubland,biome_type
+17,temperate evergreen needleleaf open woodland,biome_type
+18,tropical savanna,biome_type
+20,xerophytic woods/scrub,biome_type
+22,steppe,biome_type
+27,desert,biome_type
+28,graminoid and forb tundra,biome_type
+30,erect dwarf shrub tundra,biome_type
+31,low and high shrub tundra,biome_type
+32,prostrate dwarf shrub tundra,biome_type
+Ia,strict nature reserve,iucn_cat
+Ib,wilderness area,iucn_cat
+II,national park,iucn_cat
+III,natural monument or feature,iucn_cat
+IV,habitat/species management area,iucn_cat
+V,protected landscape/seascape,iucn_cat
+VI,pa with sustainable use of natural resources,iucn_cat
+not applicable,not applicable,iucn_cat
+not assigned,not assigned,iucn_cat
+not reported,not reported,iucn_cat
