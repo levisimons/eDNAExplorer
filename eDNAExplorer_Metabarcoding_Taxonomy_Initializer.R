@@ -152,6 +152,7 @@ tryCatch(
           system(paste("rm ",basename(TronkoFile),sep=""))
         }
         TronkoInputs <- rbindlist(TronkoInputs, use.names=TRUE, fill=TRUE)
+        TronkoInputs$Taxonomic_Path <- gsub(","," ",TronkoInputs$Taxonomic_Path)
         #Get ASV to sampleID information
         TronkoASVs <- unique(TronkoBucket$Filename)
         TronkoASVs <- TronkoASVs[grepl(paste("projects",ProjectID,"assign",Primer,sep="/"),TronkoASVs)]
