@@ -15,7 +15,7 @@ jobs:
       SSH_ADDRESS: ${{ github.ref == 'refs/heads/main' && secrets.SSH_ADDRESS_PROD || secrets.SSH_ADDRESS }}
       SSH_USER: ${{ github.ref == 'refs/heads/main' && secrets.SSH_USER_PROD || secrets.SSH_USER }}
       SSH_PASSWORD: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PASSWORD_PROD || secrets.SSH_PASSWORD }}
-      SSH_KEY: ${{ github.ref == 'refs/heads/main' && secrets.SSH_KEY }}
+      SSH_KEY: ${{ secrets.SSH_KEY }}
       DEPLOY_ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'PRODUCTION' || 'STAGING' }}
     steps:
       - name: Checkout code
