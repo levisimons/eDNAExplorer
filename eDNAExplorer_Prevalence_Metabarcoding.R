@@ -247,7 +247,8 @@ tryCatch(
         dplyr::summarise(per = n_distinct(SampleID)/n_distinct(TronkoDB$SampleID))
       TronkoDB <- as.data.frame(TronkoDB)
       #Merge in taxonomy data.
-      TronkoDB <- dplyr::left_join(TronkoDB, TaxonomyDB[,c(TaxonomicRank,"Common_Name","Image_URL")],na_matches="never")
+      TronkoDB <- dplyr::left_join(TronkoDB, TaxonomyDB,na_matches="never")
+      TaxonomyDB[,]
       TronkoDB$Image_URL <- ifelse(is.na(TronkoDB$Image_URL), 'https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png', TronkoDB$Image_URL)
       if (TaxonomicRank != "kingdom") {
         colnames(TronkoDB)[which(names(TronkoDB) == TaxonomicRank)] <- "Latin_Name"
