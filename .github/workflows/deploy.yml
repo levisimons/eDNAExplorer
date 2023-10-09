@@ -15,21 +15,15 @@ jobs:
       SSH_ADDRESS: ${{ github.ref == 'refs/heads/main' && secrets.SSH_ADDRESS_PROD || secrets.SSH_ADDRESS }}
       SSH_USER: ${{ github.ref == 'refs/heads/main' && secrets.SSH_USER_PROD || secrets.SSH_USER }}
       SSH_PASSWORD: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PASSWORD_PROD || secrets.SSH_PASSWORD }}
-      SSH_KEY: ${{ secrets.SSH_KEY }}
       DEPLOY_ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'PRODUCTION' || 'STAGING' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Set up SSH key
-        run: |
-          echo "${{ env.SSH_KEY }}" > ssh_key.pem
-          chmod 600 ssh_key.pem
-          ssh-add ./ssh_key.pem
       - name: Deploy to server
         run: |
           sudo apt-get update
           sudo apt-get install -y sshpass
           echo "Attempting to deploy to $DEPLOY_ENVIRONMENT environment"
           echo "Copying files to server located at $SSH_ADDRESS"
-          scp -i ./ssh_key.pem -o StrictHostKeyChecking=no -r ./* ${{ env.SSH_USER }}@${{ env.SSH_ADDRESS }}:/home/ubuntu/eDNAExplorer
+          sshpass -p "${{ env.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -r ./* ${{ env.SSH_USER }}@${{ env.SSH_ADDRESS }}:/home/ubuntu/eDNAExplorer
           echo "Finished deploying to $DEPLOY_ENVIRONMENT environment"
