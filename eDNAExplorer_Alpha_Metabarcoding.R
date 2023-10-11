@@ -254,7 +254,7 @@ tryCatch(
           tmp$x <- as.factor(sample_data(AbundanceFiltered)[[EnvironmentalVariable]])
         }
         #Run a Kruskal-Wallis test between alpha diversity and selected environmental variable.
-        if(length(unique(tmp$x))>1){
+        if(length(unique(na.omit(tmp$x)))>1){
           test <- suppressWarnings(kruskal.test(tmp$y ~ tmp$x, data = tmp))
           Stats_Message <- paste("chi-squared = ",round(test$statistic,digits=3)," df = ",test$parameter," p-value = ",round(test$p.value,digits=3))
         } else {
