@@ -251,7 +251,10 @@ tryCatch(
           tmp["description"][is.na(tmp["description"])] <- "no data available"
           tmp$x <- as.factor(tmp$description)
         } else{
-          tmp$x <- as.factor(sample_data(AbundanceFiltered)[[EnvironmentalVariable]])
+          # Rename missing data
+          x_label <- sample_data(AbundanceFiltered)[[EnvironmentalVariable]]
+          x_label[is.na(x_label)] <- "no data available"
+          tmp$x <- as.factor(x_label)
         }
         #Run a Kruskal-Wallis test between alpha diversity and selected environmental variable.
         if(length(unique(na.omit(tmp$x)))>1){
