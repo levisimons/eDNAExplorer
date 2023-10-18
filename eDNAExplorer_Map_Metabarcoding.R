@@ -126,7 +126,7 @@ tryCatch(
     names(TronkoDB)[names(TronkoDB) == "latitude"] <- "lat"
     
     # Generate JSON object for export and mapping.
-    datasets <- list(datasets = list(eDNA=toJSON(TronkoDB),GBIF=toJSON(TaxonMap)))
+    datasets <- list(datasets = list(eDNA=TronkoDB,GBIF=TaxonMap))
     # Export file for mapping
     filename <- paste("Map_Metabarcoding_Taxon_",Taxon_name,"_Rank_",TaxonomicRank,".json",sep="")
     filename <- tolower(filename)
