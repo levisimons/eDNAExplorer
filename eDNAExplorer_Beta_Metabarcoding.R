@@ -217,10 +217,12 @@ tryCatch(
       filter(n() > sample_CountThreshold) %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% select(-Mismatch)
     #Merege relative abudance results into data filtered by reads per sample and mismatches.
     #Then filtered on relative abundances.
-    TronkoInput <- TronkoInput %>%
+    TronkoDB <- TronkoInput %>%
       left_join(Tronko_Unfiltered,na_matches="never") %>%
       filter(freq >= FilterThreshold) %>% select(-freq)
-    TronkoDB <- as.data.frame(TronkoInput)
+    TronkoDB <- as.data.frame(TronkoDB)
+    # Remove duplicated
+    TronkoDB <- TronkoDB[!duplicated(TronkoDB),]
     #Remove taxa which are unknown at a given rank.
     TronkoDB <- TronkoDB[,c("SampleID",TaxonomicRanks[1:TaxonomicNum])]
     TronkoDB <- TronkoDB[!is.na(TronkoDB[, sample_TaxonomicRank]), ]
@@ -290,6 +292,8 @@ tryCatch(
     write(toJSON(datasets),filename)
     system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
+    
+    RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
   },
   error = function(e) {
     process_error(e, filename)
