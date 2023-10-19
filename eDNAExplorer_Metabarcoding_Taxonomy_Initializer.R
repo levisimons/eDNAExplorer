@@ -337,6 +337,9 @@ tryCatch(
     system(paste("echo > ",filename,sep=""))
     system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/log/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
     system(paste("rm ",filename))
+    
+    #Trigger script to store unique eDNA occurrences.
+    system(paste('Rscript --vanilla eDNAExplorer_Metabarcoding_Observations_Initializer.R ',shQuote(ProjectID),sep=""))
   },
   error = function(e) {
     process_error(e, filename)

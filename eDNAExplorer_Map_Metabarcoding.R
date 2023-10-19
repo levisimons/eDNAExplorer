@@ -11,10 +11,6 @@ require(lubridate)
 require(plotly)
 require(jsonlite)
 require(data.table)
-require(uuid)
-
-# Fetch project ID early so we can use it for error output when possible.
-ProjectID <- args[1]
 
 readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
@@ -27,21 +23,23 @@ db_pass <- Sys.getenv("db_pass")
 gbif_dir <- Sys.getenv("GBIF_HOME")
 bucket <- Sys.getenv("S3_BUCKET")
 
+Taxon_name <- args[1]
+
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE,lastRanAt = Sys.time(), error = error_message))
+  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message))
   write(json_content, filename)
   
   timestamp <- as.integer(Sys.time()) # Get Unix timestamp
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  dest_filename <- sub("\\.json$", ".build", filename)
   
-  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
+  s3_path <- if (is.null(Taxon_name) || Taxon_name == "") {
     paste("s3://",bucket,"/errors/map/", new_filename, sep = "")
   } else {
-    dest_filename <- sub("\\.json$", ".build", filename)
-    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    paste("s3://",bucket,"/maps/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -49,39 +47,26 @@ process_error <- function(e, filename = "error.json") {
   stop(error_message)
 }
 
+
 # Get filtering parameters.
-# ProjectID:string
-# Marker:string Target marker name
-# Num_Mismatch:numeric Maximum number of sequence mismatches allowed with Tronko-assign output
-# TaxonomicRank:string Taxonomic level to aggregate results to
-# CountThreshold:numeric Read count threshold for retaining samples
-# FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 # Taxon_name:string Scientific taxon name
-# Rscript --vanilla eDNAExplorer_Map_Metabarcoding.R "ProjectID" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "Taxon_name"
+# TaxonomicRank:string Taxonomic level to aggregate results to
+# Rscript --vanilla eDNAExplorer_Map_Metabarcoding.R "Taxon_name" "TaxonomicRank"
 
 tryCatch(
   {
-    if (length(args) != 7) {
-      stop("Need the following inputs: ProjectID, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, Taxon_name.", call. = FALSE)
-    } else if (length(args) == 7) {
-      ProjectID <- args[1]
-      Marker <- args[2]
-      Num_Mismatch <- args[3]
-      TaxonomicRank <- args[4]
-      CountThreshold <- args[5]
-      FilterThreshold <- args[6]
-      Taxon_name <- args[7]
+    if (length(args) != 2) {
+      stop("Need the following inputs: Taxon_name, TaxonomicRank.", call. = FALSE)
+    } else if (length(args) == 2) {
+      Taxon_name <- args[1]
+      TaxonomicRank <- args[2]
       #Define variables.
-      Project_ID <- as.character(ProjectID)
-      Taxon <- as.character(Taxon_name)
+      Taxon_name <- as.character(Taxon_name)
       #Get GBIF taxonomy key for taxon.
-      Taxon_GBIF <- name_backbone(name=Taxon,rank=TaxonomicRank)$usageKey
-      #Ensure numeric values.
-      Num_Mismatch <- as.numeric(Num_Mismatch)
-      CountThreshold <- as.numeric(CountThreshold)
-      FilterThreshold <- as.numeric(FilterThreshold)
+      Taxon_GBIF <- name_backbone(name=Taxon_name,rank=TaxonomicRank)$usageKey
+
       #Define output filename.
-      filename <- paste("Map_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(FilterThreshold,scientific=F),".json",sep="")
+      filename <- paste("Map_Metabarcoding_Taxon_",Taxon_name,"_Rank_",TaxonomicRank,".json",sep="")
       filename <- tolower(filename)
       filename <- gsub(" ","_",filename)
     }
@@ -98,12 +83,13 @@ tryCatch(
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
     dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
-    system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", Project_ID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+    system(paste("aws s3 cp ", filename, " s3://",bucket,"/maps/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
     system(paste("rm ", filename, sep = ""))
     
     #Establish sql connection
     Database_Driver <- dbDriver("PostgreSQL")
     sapply(dbListConnections(Database_Driver), dbDisconnect)
+    con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
     
     #Read in GBIF occurrences.
     gbif <- gbif_local()
@@ -113,78 +99,43 @@ tryCatch(
                               coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
                               occurrencestatus=="PRESENT",taxonkey==Taxon_GBIF) %>% select(decimallongitude,decimallatitude)
     GBIFDB <- as.data.frame(GBIFDB)
-    colnames(GBIFDB) <- c("longitude","latitude")
+    colnames(GBIFDB) <- c("lng","lat")
     
     #Get unique taxon locations
     if(nrow(GBIFDB) < 1){
-      TaxonMap <- data.frame(matrix(nrow=1,ncol=3))
-      colnames(TaxonMap) <- c("source","longitude","latitude")
-      TaxonMap$source <- "GBIF"
+      TaxonMap <- data.frame(matrix(nrow=1,ncol=2))
+      colnames(TaxonMap) <- c("lng","lat")
+      TaxonMap$lng <- " "
+      TaxonMap$lat <- " "
     }
     if(nrow(GBIFDB) >=1){
-      TaxonMap <- GBIFDB[,c("longitude","latitude")]
+      TaxonMap <- GBIFDB[,c("lng","lat")]
       TaxonMap <- TaxonMap[complete.cases(TaxonMap),]
       TaxonMap <- TaxonMap[!duplicated(TaxonMap),]
-      TaxonMap$source <- "GBIF"
-      TaxonMap <- TaxonMap[,c("source","longitude","latitude")]
     }
     
     # Read in Tronko output and filter it.
-    TronkoFile <- paste(Marker, ".csv", sep = "")
-    TronkoFile_tmp <- paste(Marker,"_map_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
-    # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
-    SubsetFile <- paste("subset_map_",UUIDgenerate(),".csv",sep="")
-    awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
-    system(awk_command, intern = TRUE)
-    # Filter on the number of mismatches.  Remove entries with NA for mismatches and for the selected taxonomic rank.
-    TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
-    TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
-    TronkoInput <- TronkoInput %>%
-      filter(Mismatch <= Num_Mismatch & !is.na(Mismatch)) %>%
-      filter(!is.na(!!sym(TaxonomicRank))) %>%
-      group_by(SampleID) %>%
-      filter(n() > CountThreshold) %>%
-      select(SampleID, kingdom, phylum, class, order, family, genus, species)
-    TronkoDB <- as.data.frame(TronkoInput)
-    system(paste("rm ",TronkoFile_tmp,sep=""))
-    system(paste("rm ",SubsetFile,sep=""))
+    TronkoInput <- tbl(con, "Occurence")
+    TronkoFiltered <- TronkoInput %>% filter(Taxon == Taxon_name) %>%
+      filter(rank == TaxonomicRank) %>% select(-c(id,Taxon,rank,year)) %>%
+      distinct(.keep_all = TRUE)
+    TronkoDB <- as.data.frame(TronkoFiltered)
+    TronkoDB <- TronkoDB[complete.cases(TronkoDB),]
+    #Rename latitude and longitude
+    names(TronkoDB)[names(TronkoDB) == "longitude"] <- "lng"
+    names(TronkoDB)[names(TronkoDB) == "latitude"] <- "lat"
     
-    #Get samples where taxon occurs and meets Tronko filters.
-    TaxonDB <- TronkoDB[!duplicated(TronkoDB),]
-    TaxonDB$SampleID <- gsub("-","_",TaxonDB$SampleID)
-    taxon_samples <- unique(TaxonDB$SampleID)
-    taxon_projects <- ProjectID
-    
-    #Read in metadata and filter it.
-    con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
-    Metadata <- tbl(con,"TronkoMetadata")
-    Metadata_Filtered <- Metadata %>% filter(!is.na(latitude) & !is.na(longitude)) %>%
-      filter(projectid %in% taxon_projects) %>% filter(fastqid %in% taxon_samples) %>%
-      select(longitude,latitude)
-    Metadata_Filtered <- as.data.frame(Metadata_Filtered)
-    
-    #Get unique taxon locations
-    if(nrow(Metadata_Filtered) < 1){
-      Metadata_Filtered <- data.frame(matrix(nrow=1,ncol=3))
-      colnames(Metadata_Filtered) <- c("source","longitude","latitude")
-      Metadata_Filtered$source <- "eDNA"
-    }
-    if(nrow(Metadata_Filtered) >=1){
-      Metadata_Filtered$source <- "eDNA"
-    }
-    
-    sapply(dbListConnections(Database_Driver), dbDisconnect)
-    
-    Taxon_Map_Data <- rbind(TaxonMap,Metadata_Filtered)
-    #Return results
-    Taxon_Map_Data <- jsonlite::toJSON(Taxon_Map_Data)
-    filename <- paste("Map_Metabarcoding_Marker_",Marker,"_Taxon_",Taxon,"_Rank_",TaxonomicRank,"_Mismatch_",Num_Mismatch,"_CountThreshold_",CountThreshold,"_AbundanceThreshold_",format(FilterThreshold,scientific=F),".json",sep="")
+    # Generate JSON object for export and mapping.
+    datasets <- list(datasets = list(eDNA=TronkoDB,GBIF=TaxonMap))
+    # Export file for mapping
+    filename <- paste("Map_Metabarcoding_Taxon_",Taxon_name,"_Rank_",TaxonomicRank,".json",sep="")
     filename <- tolower(filename)
     filename <- gsub(" ","_",filename)
-    write(Taxon_Map_Data,filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    write(toJSON(datasets,auto_unbox = TRUE),filename)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/maps/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
+    
+    RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
   },
   error = function(e) {
     process_error(e, filename)

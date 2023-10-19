@@ -305,6 +305,8 @@ tryCatch(
     write(toJSON(datasets),filename)
     system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
+    
+    RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
   },
   error = function(e) {
     process_error(e, filename)
