@@ -1,7 +1,9 @@
+#!/usr/bin/env Rscript
 rm(list=ls())
+args = commandArgs(trailingOnly=TRUE)
 require(tidyr)
 require(sf)
-require(sp)
+#require(sp)
 require(lubridate)
 require(httr)
 require(curl)
@@ -17,6 +19,9 @@ require(RPostgreSQL)
 require(digest)
 require(anytime)
 
+# Fetch project ID early so we can use it for error output when possible.
+ProjectID <- args[1]
+
 #Establish database credentials.
 readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
@@ -29,271 +34,284 @@ db_pass <- Sys.getenv("db_pass")
 bucket <- Sys.getenv("S3_BUCKET")
 Database_Driver <- dbDriver("PostgreSQL")
 
+# Write error output to our json file.
+process_error <- function(e, filename = "error.json") {
+  error_message <- paste("Error:", e$message)
+  cat(error_message, "\n")
+  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message))
+  write(json_content, filename)
+  
+  timestamp <- as.integer(Sys.time()) # Get Unix timestamp
+  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
+  dest_filename <- sub("\\.json$", ".build", filename)
+  
+  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
+    paste("s3://",bucket,"/errors/qpcr/", new_filename, sep = "")
+  } else {
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+  }
+  
+  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
+  system(paste("rm ",filename,sep=""))
+  stop(error_message)
+}
+
 #Force close any possible postgreSQL connections.
 sapply(dbListConnections(Database_Driver), dbDisconnect)
 
-#Get project ID.
-#Rscript --vanilla eDNAExplorer_Metabarcoding_qPCR_Initializer.R "project ID string"
-if (length(args)<1) {
-  stop("Need a project ID", call.=FALSE)
-} else if (length(args)==1) {
-  ProjectID <- args[1]
-}
-
-#Read in qPCR project data.
-Project_Data <- system(paste("aws s3 cp s3://",bucket,"/projects",ProjectID,"QPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
-Project_Data <- gsub("[\r\n]", "", Project_Data)
-Project_Data <- read.table(text = Project_Data,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
-addFormats(c("%m/%d/%y","%m-%d-%y","%d/%m/%y","%y/%m/%d"))
-Project_Data$`Sample Date` <- anytime::anydate(Project_Data$`Sample Date`)
-Project_Data$`Data type` <- NULL
-Project_Data$`Additional environmental metadata....` <- NULL
-colnames(Project_Data) <- gsub('qPCR Probe Fluorophore \\(dye\\)','qPCR Probe Fluorophore',colnames(Project_Data))
-colnames(Project_Data) <- gsub('Cycle Threshold \\(ct\\)','Cycle Threshold',colnames(Project_Data))
-Project_Data <- Project_Data[,nchar(colnames(Project_Data))>0]
-Project_Data <- Project_Data %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
-Project_Data <- as.data.frame(Project_Data)
-
-Field_Variables <- colnames(Project_Data)[!(colnames(Project_Data) %in% c("Sample ID","Longitude","Latitude","Sample Date","Spatial Uncertainty"))]
-#Read in extracted metadata.
-Metadata_Extracted <- system(paste("aws s3 cp s3://",bucket,"/projects/",ProjectID,"/MetadataOutput_qPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
-Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A","#N/A"))
-Metadata_Extracted$Sample_Date <- as.Date(as.POSIXct(Metadata_Extracted$Sample_Date))
-
-#Remove duplicate rows in extracted metadata
-Metadata_Extracted <- Metadata_Extracted[!duplicated(Metadata_Extracted),]
-
-#Merge metadata and project data
-tmp1 <- Project_Data[complete.cases(Project_Data[,c("Sample ID","Sample Date","Latitude","Longitude","Spatial Uncertainty")]),]
-tmp2 <- Metadata_Extracted[complete.cases(Metadata_Extracted[,c("name","Sample_Date","Latitude","Longitude","Spatial_Uncertainty")]),]
-MergedData <- dplyr::left_join(tmp1,tmp2,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude","Spatial Uncertainty"="Spatial_Uncertainty"),,multiple="all",na_matches = "never")
-
-#Add project ID
-MergedData$ProjectID <- ProjectID
-
-#Get target organism variables from initial metadata.
-Target_Variables <- colnames(MergedData)[grep("^Target [[:digit:]]",colnames(MergedData))]
-
-#Get non-target variables from initial metadata.
-Non_Target_Variables <- colnames(MergedData)[!(colnames(MergedData) %in% Target_Variables)]
-
-#Get number of target organisms.
-Target_Numbers <- unique(as.numeric(gsub("\\D", "", Target_Variables)))
-
-#Read in state/province boundaries.
-#Boundaries are from https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/
-sf_use_s2(FALSE)
-SpatialBucket <- system("aws s3 ls s3://",bucket,"/spatial --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",intern=TRUE)
-SpatialBucket <- read.table(text = paste(SpatialBucket,sep = ""),header = FALSE)
-colnames(SpatialBucket) <- c("Date", "Time", "Size","Filename")
-SpatialFiles <- unique(SpatialBucket$Filename)
-for(SpatialFile in SpatialFiles){
-  system(paste("aws s3 cp s3://",bucket,"/",SpatialFile," . --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
-}
-GADM_1_Boundaries <- sf::st_read("ne_10m_admin_1_states_provinces.shp")
-#Determine the unique list of national and state/proving boundaries sample locations cover.
-GADM_Boundaries <- st_join(st_as_sf(MergedData[!is.na(MergedData$Latitude) & !is.na(MergedData$Latitude),], coords = c("Longitude", "Latitude"), crs = 4326), GADM_1_Boundaries[c('iso_a2','woe_name')],join = st_intersects)
-GADM_Boundaries <- GADM_Boundaries %>% st_drop_geometry()
-GADM_Boundaries <- as.data.frame(GADM_Boundaries[,c("Sample ID","Sample Date","iso_a2","woe_name")])
-names(GADM_Boundaries)[names(GADM_Boundaries) == "woe_name"] <- "State"
-names(GADM_Boundaries)[names(GADM_Boundaries) == "iso_a2"] <- "Nation"
-GADM_Boundaries <- GADM_Boundaries[!duplicated(GADM_Boundaries),]
-MergedData <- dplyr::left_join(MergedData,GADM_Boundaries,by=c("Sample ID","Sample Date"),na_matches = "never")
-country_list <- na.omit(unique(GADM_Boundaries$Nation))
-state_province_list <- na.omit(unique(GADM_Boundaries$State))
-
-#Generate unique code for each sample
-MergedData <- MergedData[!duplicated(MergedData),]
-Target_Variables <- colnames(MergedData)[grep("^Target [[:digit:]]",colnames(MergedData))]
-MergedData$UniqueID <- sapply(apply(MergedData[,c("Sample ID","Sample Date","Latitude","Longitude","Spatial Uncertainty",Target_Variables)],1,paste,collapse = "" ),digest,algo="md5")
-
-#Read in GBIF occurrences.
-gbif <- gbif_local()
-
-#Get local bounds for sample locations, add 0.5 degree buffer.
-Local_East <- max(na.omit(MergedData$Longitude))+0.5
-Local_West <- min(na.omit(MergedData$Longitude))-0.5
-Local_South <- min(na.omit(MergedData$Latitude))-0.5
-Local_North <- max(na.omit(MergedData$Latitude))+0.5
-
-#Clip GBIF occurrence locations by local boundaries.
-Taxa_Local <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
-                              coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
-                              occurrencestatus=="PRESENT",
-                              decimallongitude >= Local_West & decimallongitude <= Local_East & decimallatitude >= Local_South & decimallatitude <= Local_North) %>% 
-  select(decimallongitude,decimallatitude,taxonkey,taxonrank,species,genus,family,order,class,phylum,kingdom)
-Taxa_Local <- as.data.frame(Taxa_Local)
-#Assign weight value for species, genera, and families.
-Taxa_Local <- Taxa_Local %>% dplyr:: mutate(Local_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
-
-#Clip GBIF occurrence locations by state/province boundaries.
-Taxa_State <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
-                              coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
-                              occurrencestatus=="PRESENT", stateprovince %in% state_province_list) %>% select(decimallongitude,decimallatitude,taxonkey,taxonrank,species,genus,family,order,class,phylum,kingdom)
-Taxa_State <- as.data.frame(Taxa_State)
-#Assign weight value for species, genera, and families.
-Taxa_State <- Taxa_State %>% dplyr:: mutate(State_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
-
-#Clip GBIF occurrence locations by national boundaries.
-Taxa_Nation <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
-                               coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
-                               occurrencestatus=="PRESENT", countrycode %in% country_list) %>% select(decimallongitude,decimallatitude,taxonkey,taxonrank,species,genus,family,order,class,phylum,kingdom)
-Taxa_Nation <- as.data.frame(Taxa_Nation)
-#Assign weight value for species, genera, and families.
-Taxa_Nation <- Taxa_Nation %>% dplyr:: mutate(Ecoregion_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
-
-#Get unique taxa with full taxonomy
-TaxaList <- unique(unlist(MergedData[,grep("^Target [[:digit:]] Organism$",colnames(MergedData))]))
-Taxa <- list()
-i=1
-TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-TaxonomicKeyRanks <- c("speciesKey","genusKey","familyKey","orderKey","classKey","phylumKey","kingdomKey")
-for(Taxon in TaxaList){
-  Taxon_GBIF <- name_backbone(Taxon,verbose=T,strict=F,curlopts=list(http_version=2))
-  Taxon_GBIF <- Taxon_GBIF[Taxon_GBIF$matchType!="NONE",colnames(Taxon_GBIF) %in% c(TaxonomicRanks,TaxonomicKeyRanks)]
-  if(nrow(Taxon_GBIF)>0){
-    Taxon_GBIF <- Taxon_GBIF[1,]
-    Taxa[[i]] <- Taxon_GBIF
-    i=i+1
-  }
-}
-TaxaDB <- rbindlist(Taxa, use.names=TRUE, fill=TRUE)
-TaxaDB <- as.data.frame(TaxaDB[!duplicated(TaxaDB),])
-TaxaDB <- TaxaDB %>% dplyr::mutate(superkingdom = case_when(
-  kingdom=="Bacteria" ~ "Bacteria",
-  kingdom=="Archaea" ~ "Archaea",
-  !is.na(kingdom) & kingdom!="Bacteria" & kingdom!="Archaea" ~ "Eukaryota"
-))
-tmp <- TaxaDB[,colnames(TaxaDB) %in% TaxonomicRanks]
-tmp <- setcolorder(tmp, intersect(TaxonomicRanks, names(tmp)))
-tmp$Taxon <- tmp[cbind(1:nrow(tmp), max.col(!is.na(tmp), ties.method = 'last'))]
-tmp$rank <- TaxonomicRanks[max.col(!is.na(tmp), ties.method="last")]
-TaxaDB <- dplyr::left_join(TaxaDB,tmp)
-
-if(nrow(TaxaDB)>0){
-  GBIF_Keys <- c()
-  for(i in 1:nrow(TaxaDB)){
-    GBIF_Key <- TaxaDB[i,]
-    if(is.na(GBIF_Key$kingdom)){GBIF_Key$kingdom <- GBIF_Key$superkingdom}
-    tmp <- name_backbone(name=GBIF_Key$Taxon,rank=GBIF_Key$rank,genus=GBIF_Key$genus,
-                         family=GBIF_Key$family,order=GBIF_Key$order,
-                         class=GBIF_Key$class,phylum=GBIF_Key$phylum,kingdom=GBIF_Key$kingdom,curlopts=list(http_version=2))
-    GBIF_Key <- dplyr::left_join(GBIF_Key,as.data.frame(tmp[,colnames(tmp) %in% TaxonomicKeyRanks]))
-    #Get GBIF backbone for querying Phylopic images
-    Taxon_Backbone <- as.numeric(na.omit(rev(unlist(GBIF_Key[,colnames(GBIF_Key) %in% TaxonomicKeyRanks]))))
-    #Get Phylopic images for each taxon
-    res <- httr::GET(url=paste("https://api.phylopic.org/resolve/gbif.org/species?embed_primaryImage=true&objectIDs=",paste(Taxon_Backbone,collapse=","),sep=""),config = httr::config(connecttimeout = 100))
-    Sys.sleep(0.5)
-    test <- fromJSON(rawToChar(res$content))
-    Taxon_Image <- test[["_embedded"]][["primaryImage"]][["_links"]][["rasterFiles"]][["href"]][[1]]
-    if(is.null(Taxon_Image)){
-      Taxon_Image <- "https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png"
+tryCatch(
+  {
+    #Get project ID.
+    #Rscript --vanilla eDNAExplorer_qPCR_Initializer.R "project ID string"
+    if (length(args)==0) {
+      stop("Need a project ID", call.=FALSE)
+    } else if (length(args)==1) {
+      ProjectID <- args[1]
     }
-    print(paste(i,Taxon_Image))
-    #Get common names if available
-    if(length(na.omit(Taxon_Backbone))==0){Common_Name <- NA}
-    if(length(na.omit(Taxon_Backbone))>0){
-      Common_Name <- as.data.frame(name_usage(key=max(na.omit(Taxon_Backbone)),rank=GBIF_Key[1,"rank"], data="vernacularNames",curlopts=list(http_version=2))$data)
-      if(nrow(Common_Name)>0){
-        Common_Name <- Common_Name[Common_Name$language=="eng",]
-        Common_Name <- Common_Name[1,"vernacularName"]
-      } else {
-        Common_Name <- NA
+  },
+  error = function(e) {
+    process_error(e)
+  }
+)
+
+tryCatch(
+  {
+    #Read in qPCR project data.
+    Project_Data <- system(paste("aws s3 cp s3:/",bucket,"projects",ProjectID,"QPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
+    if(length(Project_Data)==0) {
+      stop("Error: No initial metadata present.")
+    }
+    Project_Data <- read.table(text = Project_Data,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
+    Project_Data$`Sample Date` <- as.Date(as.character(parse_date_time(Project_Data$`Sample Date`, orders = c("ymd","mdy","dmy"))))
+    Project_Data$`Data type` <- NULL
+    Project_Data$`Additional environmental metadata....` <- NULL
+    #Remove zero length variable names
+    Project_Data <- Project_Data[,nchar(colnames(Project_Data))>0]
+    #Define numerical variables
+    Project_Data <- Project_Data %>% dplyr::mutate_at(c("Latitude","Longitude","Spatial Uncertainty"),as.numeric)
+    Project_Data <- as.data.frame(Project_Data)
+    colnames(Project_Data) <- gsub('qPCR Probe Fluorophore \\(dye\\)','qPCR Probe Fluorophore',colnames(Project_Data))
+    colnames(Project_Data) <- gsub('Cycle Threshold \\(ct\\)','Cycle Threshold',colnames(Project_Data))
+    Metadata_Initial <- Project_Data
+    
+    Required_Variables <- c("Site","Sample ID","Sample Replicate Number","Sample Type","Longitude","Latitude","Sample Date",grep("^Target [[:digit:]] Organism$",colnames(Metadata_Initial),value=T),grep("^Target [[:digit:]] Taxonomic Rank of Organism$",colnames(Metadata_Initial),value=T),grep("^Target [[:digit:]] qPCR Probe Fluorophore$",colnames(Metadata_Initial),value=T),grep("^Target [[:digit:]] Primer Probe Set Name$",colnames(Metadata_Initial),value=T),grep("^Target [[:digit:]] ForwardPS$",colnames(Metadata_Initial),value=T),grep("^Target [[:digit:]] ReversePS$",colnames(Metadata_Initial),value=T),grep("^Target [[:digit:]] Probe$",colnames(Metadata_Initial),value=T),grep("^Target [[:digit:]] Cycle Threshold$",colnames(Metadata_Initial),value=T),grep("^Target [[:digit:]] Min RFU threshold$",colnames(Metadata_Initial),value=T),grep("^Target [[:digit:]] Final RFU$",colnames(Metadata_Initial),value=T),grep("^Target [[:digit:]] Was organism detected$",colnames(Metadata_Initial),value=T))
+    #Get field variables from initial metadata.  These are generally project-specific non-required variables.
+    Field_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% Required_Variables)]
+    #Get target organism variables from initial metadata.
+    Target_Variables <- colnames(Metadata_Initial)[grep("^Target [[:digit:]]",colnames(Metadata_Initial))]
+    #Get non-target variables from initial metadata.
+    Non_Target_Variables <- colnames(Metadata_Initial)[!(colnames(Metadata_Initial) %in% Target_Variables)]
+    #Get number of target organisms.
+    Target_Numbers <- unique(as.numeric(gsub("\\D", "", Target_Variables)))
+    
+    #Restructure initial metadata to keep all target organism results within a single set of columns
+    Metadata_Initial_List <- c()
+    i=1
+    for(Target_Number in Target_Numbers){
+      Target_Num_Variables <- colnames(Metadata_Initial)[grep(paste("^Target ",Target_Number,sep=""),colnames(Metadata_Initial))]
+      Metadata_Subset <- Metadata_Initial[,c(Non_Target_Variables,Target_Num_Variables)]
+      colnames(Metadata_Subset) <- c(Non_Target_Variables,gsub(paste("^Target ",Target_Number," ",sep=""),"Target ",Target_Num_Variables))
+      Metadata_Initial_List[[i]] <- Metadata_Subset
+      i=i+1
+    }
+    Metadata_Initial <- rbindlist(Metadata_Initial_List, use.names=TRUE, fill=TRUE)
+    Metadata_Initial <- as.data.frame(Metadata_Initial)
+    
+    Metadata_Extracted <- system(paste("aws s3 cp s3://",bucket,"/projects/",ProjectID,"/MetadataOutput_qPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    if(length(Metadata_Extracted)==0) {
+      stop("Error: No extracted metadata present.")
+    }
+    Metadata_Extracted <- read.table(text = Metadata_Extracted,header=TRUE, sep=",",as.is=T,skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A","n/a","na"))
+    Metadata_Extracted$Sample_Date <- lubridate::ymd_hms(Metadata_Extracted$Sample_Date)
+    Metadata_Extracted$Sample_Date <- as.Date(as.character(as.POSIXct(Metadata_Extracted$Sample_Date)))
+    #Set no data results.
+    Metadata_Extracted[Metadata_Extracted==-999999] <- NA
+    Metadata_Extracted[Metadata_Extracted==-32768] <- NA
+    #Deduplicate
+    Metadata_Extracted <- Metadata_Extracted[!duplicated(Metadata_Extracted),]
+    
+    #Merge metadata
+    Required_Variables <- c("Site","Sample ID","Sample Replicate Number","Sample Type","Longitude","Latitude","Sample Date","Target Organism","Target Taxonomic Rank of Organism","Target qPCR Probe Fluorophore","Target Primer Probe Set Name","Target ForwardPS","Target Probe","Target ReversePS","Target Cycle Threshold","Target Min RFU threshold","Target Final RFU","Target Was organism detected")
+    Metadata <- dplyr::right_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude"),na_matches="never",multiple="all")
+    Metadata <- Metadata[!duplicated(Metadata),]
+    
+    #Add project ID
+    MergedData <- Metadata
+    MergedData$ProjectID <- ProjectID
+    
+    #Read in state/province boundaries.
+    #Boundaries are from https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/
+    sf_use_s2(FALSE)
+    SpatialBucket <- system(paste("aws s3 ls s3://",bucket,"/spatial --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    SpatialBucket <- read.table(text = paste(SpatialBucket,sep = ""),header = FALSE)
+    colnames(SpatialBucket) <- c("Date", "Time", "Size","Filename")
+    SpatialFiles <- unique(SpatialBucket$Filename)
+    for(SpatialFile in SpatialFiles){
+      system(paste("aws s3 cp s3://",bucket,"/",SpatialFile," . --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    }
+    GADM_1_Boundaries <- sf::st_read("ne_10m_admin_1_states_provinces.shp")
+    #Determine the unique list of national and state/proving boundaries sample locations cover.
+    GADM_Boundaries <- st_join(st_as_sf(MergedData[!is.na(MergedData$Latitude) & !is.na(MergedData$Latitude),], coords = c("Longitude", "Latitude"), crs = 4326), GADM_1_Boundaries[c('iso_a2','woe_name')],join = st_intersects)
+    GADM_Boundaries <- GADM_Boundaries %>% st_drop_geometry()
+    GADM_Boundaries <- as.data.frame(GADM_Boundaries[,c("Sample ID","Sample Date","iso_a2","woe_name")])
+    names(GADM_Boundaries)[names(GADM_Boundaries) == "woe_name"] <- "State"
+    names(GADM_Boundaries)[names(GADM_Boundaries) == "iso_a2"] <- "Nation"
+    GADM_Boundaries <- GADM_Boundaries[!duplicated(GADM_Boundaries),]
+    MergedData <- dplyr::left_join(MergedData,GADM_Boundaries,by=c("Sample ID","Sample Date"),na_matches = "never")
+    country_list <- na.omit(unique(GADM_Boundaries$Nation))
+    state_province_list <- na.omit(unique(GADM_Boundaries$State))
+    #Remove spatial files
+    system("rm ne_10m_admin_1_states_provinces.*")
+    
+    #Generate unique code for each sample
+    MergedData <- MergedData[!duplicated(MergedData),]
+    MergedData$UniqueID <- sapply(apply(MergedData[,Required_Variables],1,paste,collapse = "" ),digest,algo="md5")
+    
+    #Read in GBIF occurrences.
+    gbif <- gbif_local()
+    
+    #Get local bounds for sample locations, add 0.5 degree buffer.
+    Local_East <- max(na.omit(MergedData$Longitude))+0.5
+    Local_West <- min(na.omit(MergedData$Longitude))-0.5
+    Local_South <- min(na.omit(MergedData$Latitude))-0.5
+    Local_North <- max(na.omit(MergedData$Latitude))+0.5
+    
+    #Clip GBIF occurrence locations by local boundaries.
+    Taxa_Local <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
+                                  coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
+                                  occurrencestatus=="PRESENT",
+                                  decimallongitude >= Local_West & decimallongitude <= Local_East & decimallatitude >= Local_South & decimallatitude <= Local_North) %>% 
+      select(decimallongitude,decimallatitude,taxonkey,taxonrank,species,genus,family,order,class,phylum,kingdom)
+    Taxa_Local <- as.data.frame(Taxa_Local)
+    #Assign weight value for species, genera, and families.
+    Taxa_Local <- Taxa_Local %>% dplyr:: mutate(Local_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
+    
+    #Clip GBIF occurrence locations by state/province boundaries.
+    Taxa_State <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
+                                  coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
+                                  occurrencestatus=="PRESENT", stateprovince %in% state_province_list) %>% select(decimallongitude,decimallatitude,taxonkey,taxonrank,species,genus,family,order,class,phylum,kingdom)
+    Taxa_State <- as.data.frame(Taxa_State)
+    #Assign weight value for species, genera, and families.
+    Taxa_State <- Taxa_State %>% dplyr:: mutate(State_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
+    
+    #Clip GBIF occurrence locations by national boundaries.
+    Taxa_Nation <- gbif %>% filter(basisofrecord %in% c("HUMAN_OBSERVATION","OBSERVATION","MACHINE_OBSERVATION"),
+                                   coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
+                                   occurrencestatus=="PRESENT", countrycode %in% country_list) %>% select(decimallongitude,decimallatitude,taxonkey,taxonrank,species,genus,family,order,class,phylum,kingdom)
+    Taxa_Nation <- as.data.frame(Taxa_Nation)
+    #Assign weight value for species, genera, and families.
+    Taxa_Nation <- Taxa_Nation %>% dplyr:: mutate(Ecoregion_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
+    
+    #Get unique taxa with full taxonomy
+    TaxaList <- unique(MergedData[,"Target Organism"])
+    Taxa <- list()
+    i=1
+    TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
+    for(Taxon in TaxaList){
+      Taxon_Rank <- unique(MergedData[MergedData$`Target Organism`==Taxon,"Target Taxonomic Rank of Organism"])
+      Taxon_GBIF <- name_backbone(name=Taxon,rank=Taxon_Rank,verbose=T,strict=F,curlopts=list(http_version=2))
+      Taxon_GBIF <- Taxon_GBIF[Taxon_GBIF$matchType!="NONE",colnames(Taxon_GBIF) %in% c(TaxonomicRanks)]
+      if(nrow(Taxon_GBIF)>0){
+        Taxon_GBIF <- Taxon_GBIF[1,]
+        Taxon_GBIF$Taxon <- Taxon
+        Taxa[[i]] <- Taxon_GBIF
+        i=i+1
       }
     }
-    GBIF_Key$Common_Name <- Common_Name
-    GBIF_Key$Image_URL <- Taxon_Image
-    GBIF_Keys[[i]] <- GBIF_Key
+    TaxaDB <- rbindlist(Taxa, use.names=TRUE, fill=TRUE)
+    TaxaDB <- as.data.frame(TaxaDB[!duplicated(TaxaDB),])
+    #Count eDNA taxonomic resolution and weigh them.
+    #Species = 4, Genus = 2, Family = 1.  Everything else = 0.
+    tmp <- TaxaDB[,c("Taxon","family","genus","species")]
+    tmp <- tmp[!duplicated(tmp),]
+    tmp$eDNAWeight <- 1*as.numeric(!is.na(tmp$family))+2*as.numeric(!is.na(tmp$genus))+4*as.numeric(!is.na(tmp$species))
+    #Check if any of the eDNA reads show up in the local set of GBIF family observations.
+    tmp$LocalFamilyPresentGBIF <- as.numeric(lapply(tmp$family,is.element,unique(na.omit(Taxa_Local$family))))
+    #Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
+    tmp$StateFamilyPresentGBIF <- as.numeric(lapply(tmp$family,is.element,unique(na.omit(Taxa_State$family))))
+    #Check if any of the eDNA reads show up in the realm set of GBIF family observations.
+    tmp$NationFamilyPresentGBIF <- as.numeric(lapply(tmp$family,is.element,unique(na.omit(Taxa_Nation$family))))
+    #Check if any of the eDNA reads show up in the local set of GBIF family observations.
+    tmp$LocalGenusPresentGBIF <- as.numeric(lapply(tmp$genus,is.element,unique(na.omit(Taxa_Local$genus))))
+    #Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
+    tmp$StateGenusPresentGBIF <- as.numeric(lapply(tmp$genus,is.element,unique(na.omit(Taxa_State$genus))))
+    #Check if any of the eDNA reads show up in the realm set of GBIF genus observations.
+    tmp$NationGenusPresentGBIF <- as.numeric(lapply(tmp$genus,is.element,unique(na.omit(Taxa_Nation$genus))))
+    #Check if any of the eDNA reads show up in the local set of GBIF family observations.
+    tmp$LocalSpeciesPresentGBIF <- as.numeric(lapply(tmp$species,is.element,unique(na.omit(Taxa_Local$species))))
+    #Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
+    tmp$StateSpeciesPresentGBIF <- as.numeric(lapply(tmp$species,is.element,unique(na.omit(Taxa_State$species))))
+    #Check if any of the eDNA reads show up in the realm set of GBIF genus observations.
+    tmp$NationSpeciesPresentGBIF <- as.numeric(lapply(tmp$species,is.element,unique(na.omit(Taxa_Nation$species))))
+    
+    #Assign TOS scores for GBIF results.
+    tmp$TOS_Local <- (1*tmp$LocalFamilyPresentGBIF+2*tmp$LocalGenusPresentGBIF+4*tmp$LocalSpeciesPresentGBIF)/tmp$eDNAWeight
+    tmp$TOS_State <- (1*tmp$StateFamilyPresentGBIF+2*tmp$StateGenusPresentGBIF+4*tmp$StateSpeciesPresentGBIF)/tmp$eDNAWeight
+    tmp$TOS_Nation <- (1*tmp$NationFamilyPresentGBIF+2*tmp$NationGenusPresentGBIF+4*tmp$NationSpeciesPresentGBIF)/tmp$eDNAWeight
+    is.nan.data.frame <- function(x)
+      do.call(cbind, lapply(x, is.nan))
+    tmp[is.nan(tmp)] <- 0
+    #Calculate a geographically weighted TOS.
+    tmp$gw_TOS <- (4*tmp$TOS_Local+2*tmp$TOS_State+1*tmp$TOS_Nation)/7
+    
+    #Merge TOS results back into merged data set.
+    MergedData <- dplyr::left_join(MergedData,tmp[,c("Taxon","TOS_Local","TOS_State","TOS_Nation","gw_TOS")],by=c("Target Organism"="Taxon"))
+    
+    #Match metadata column names to format in SQL database.
+    colnames(MergedData) <- gsub(" ","_",tolower(colnames(MergedData)))
+    
+    #Create database connection.
+    con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
+    
+    #Clear old metadata entries.
+    dbExecute(con,paste('DELETE FROM "QPCRSample" WHERE "projectid" = \'',ProjectID,'\'',sep=""))
+    
+    #Check for redundant data.
+    #Add new qPCR data.
+    if(dbExistsTable(con,"QPCRSample")){
+      Metadata_Check <-  tbl(con,"QPCRSample")
+      Metadata_IDs <- MergedData$uniqueid
+      Metadata_Check <- Metadata_Check %>% filter(uniqueid %in% Metadata_IDs)
+      Metadata_Check <- as.data.frame(Metadata_Check)
+      Metadata_Check_IDs <- Metadata_Check$uniqueid
+      Metadata_Append <- MergedData[!(Metadata_IDs %in% Metadata_Check_IDs),]
+      dbWriteTable(con,"QPCRSample",Metadata_Append,row.names=FALSE,append=TRUE)
+    } else{
+      dbWriteTable(con,"QPCRSample",MergedData,row.names=FALSE,append=TRUE)
+    }
+    
+    #Prepare data for export to occurence table.
+    ObservationsExport <- MergedData[MergedData$target_was_organism_detected==1,c("target_organism","target_taxonomic_rank_of_organism","projectid","sample_id","latitude","longitude","sample_date")]
+    #Get sample years
+    ObservationsExport$year <- as.numeric(format(ObservationsExport$sample_date,'%Y'))
+    #Rename columns for export
+    names(ObservationsExport)[names(ObservationsExport) == "target_organism"] <- "Taxon"
+    names(ObservationsExport)[names(ObservationsExport) == "target_taxonomic_rank_of_organism"] <- "rank"
+    names(ObservationsExport)[names(ObservationsExport) == "projectid"] <- "projectId"
+    names(ObservationsExport)[names(ObservationsExport) == "sample_id"] <- "sampleId"
+    ObservationsExport$sample_date <- NULL
+    #Designate a unique id
+    ObservationsExport$id <- sapply(paste(ObservationsExport$Taxon,ObservationsExport$rank,ObservationsExport$projectId,ObservationsExport$sampleId,ObservationsExport$latitude,ObservationsExport$longitude,ObservationsExport$year),digest,algo="md5")
+    #Change case on taxonomic rank entries
+    ObservationsExport$rank <- tolower(ObservationsExport$rank)
+    
+    #Check for redundant data.
+    #Add new qPCR data.
+    if(dbExistsTable(con,"Occurence")){
+      Observations_Check <-  tbl(con,"Occurence")
+      Observations_IDs <- ObservationsExport$id
+      Observations_Check <- Observations_Check %>% filter(id %in% Observations_IDs)
+      Observations_Check <- as.data.frame(Observations_Check)
+      Observations_Check_IDs <- Observations_Check$id
+      Observations_Append <- ObservationsExport[!(Observations_IDs %in% Observations_Check_IDs),]
+      dbWriteTable(con,"Occurence",Observations_Append,row.names=FALSE,append=TRUE)
+    } else{
+      dbWriteTable(con,"Occurence",ObservationsExport,row.names=FALSE,append=TRUE)
+    }
+    
+    RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
+  },
+  error = function(e) {
+    process_error(e, filename)
   }
-}
-GBIF_Keys <- rbindlist(GBIF_Keys, use.names=TRUE, fill=TRUE)
-GBIF_Keys <- as.data.frame(GBIF_Keys)
-#Create unique ID for the Phylopic database.
-GBIF_Keys$UniqueID <- sapply(paste(GBIF_Keys$Taxon,GBIF_Keys$rank),digest,algo="md5")
-
-#Count eDNA taxonomic resolution and weigh them.
-#Species = 4, Genus = 2, Family = 1.  Everything else = 0.
-tmp <- GBIF_Keys[,c("family","genus","species")]
-tmp <- tmp[!duplicated(tmp),]
-tmp$eDNAWeight <- 1*as.numeric(!is.na(tmp$family))+2*as.numeric(!is.na(tmp$genus))+4*as.numeric(!is.na(tmp$species))
-
-#Check if any of the eDNA reads show up in the local set of GBIF family observations.
-tmp$LocalFamilyPresentGBIF <- as.numeric(lapply(tmp$family,is.element,unique(na.omit(Taxa_Local$family))))
-#Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
-tmp$StateFamilyPresentGBIF <- as.numeric(lapply(tmp$family,is.element,unique(na.omit(Taxa_State$family))))
-#Check if any of the eDNA reads show up in the realm set of GBIF family observations.
-tmp$NationFamilyPresentGBIF <- as.numeric(lapply(tmp$family,is.element,unique(na.omit(Taxa_Nation$family))))
-#Check if any of the eDNA reads show up in the local set of GBIF family observations.
-tmp$LocalGenusPresentGBIF <- as.numeric(lapply(tmp$genus,is.element,unique(na.omit(Taxa_Local$genus))))
-#Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
-tmp$StateGenusPresentGBIF <- as.numeric(lapply(tmp$genus,is.element,unique(na.omit(Taxa_State$genus))))
-#Check if any of the eDNA reads show up in the realm set of GBIF genus observations.
-tmp$NationGenusPresentGBIF <- as.numeric(lapply(tmp$genus,is.element,unique(na.omit(Taxa_Nation$genus))))
-#Check if any of the eDNA reads show up in the local set of GBIF family observations.
-tmp$LocalSpeciesPresentGBIF <- as.numeric(lapply(tmp$species,is.element,unique(na.omit(Taxa_Local$species))))
-#Check if any of the eDNA reads show up in the ecoregional set of GBIF family observations.
-tmp$StateSpeciesPresentGBIF <- as.numeric(lapply(tmp$species,is.element,unique(na.omit(Taxa_State$species))))
-#Check if any of the eDNA reads show up in the realm set of GBIF genus observations.
-tmp$NationSpeciesPresentGBIF <- as.numeric(lapply(tmp$species,is.element,unique(na.omit(Taxa_Nation$species))))
-
-#Assign TOS scores for GBIF results.
-tmp$TOS_Local <- (1*tmp$LocalFamilyPresentGBIF+2*tmp$LocalGenusPresentGBIF+4*tmp$LocalSpeciesPresentGBIF)/tmp$eDNAWeight
-tmp$TOS_State <- (1*tmp$StateFamilyPresentGBIF+2*tmp$StateGenusPresentGBIF+4*tmp$StateSpeciesPresentGBIF)/tmp$eDNAWeight
-tmp$TOS_Nation <- (1*tmp$NationFamilyPresentGBIF+2*tmp$NationGenusPresentGBIF+4*tmp$NationSpeciesPresentGBIF)/tmp$eDNAWeight
-is.nan.data.frame <- function(x)
-  do.call(cbind, lapply(x, is.nan))
-tmp[is.nan(tmp)] <- 0
-
-#Merge in TOS results.
-tmp <- dplyr::left_join(GBIF_Keys[c("Taxon","family","genus","species")],tmp,by=c("family","genus","species"))
-for(TargetVar in unique(grep("^Target [[:digit:]] Organism$",colnames(MergedData),value=T))){
-  MergedData <- MergedData %>% dplyr::left_join(tmp[,c("Taxon","TOS_Local","TOS_State","TOS_Nation")],by=setNames("Taxon",TargetVar))
-}
-
-#Check for redundant data.
-#Add new Phylopic data.
-#Open qPCR sample database.
-con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
-if(dbExistsTable(con,"Taxonomy")==TRUE){
-  Phylopic_Check <-  tbl(con,"Taxonomy")
-  Phylopic_IDs <- GBIF_Keys$UniqueID
-  Phylopic_Check <- Phylopic_Check %>% filter(UniqueID %in% Phylopic_IDs)
-  Phylopic_Check <- as.data.frame(Phylopic_Check)
-  Phylopic_Check_IDs <- Phylopic_Check$UniqueID
-  Phylopic_Append <- GBIF_Keys[!(Phylopic_IDs %in% Phylopic_Check_IDs),]
-  dbWriteTable(con,"Taxonomy",Phylopic_Append,row.names=FALSE,append=TRUE)
-} 
-if(dbExistsTable(con,"Taxonomy")==FALSE){
-  dbWriteTable(con,"Taxonomy",GBIF_Keys,row.names=FALSE,append=TRUE)
-}
-RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
-
-#Match qPCR project column names to format in SQL database.
-colnames(MergedData) <- gsub(" ","_",tolower(colnames(MergedData)))
-
-#Remove non-standard columns
-Required_Variables <- unique(c("site","sample_id","sample_type","longitude","latitude","sample_date","spatial_uncertainty","sample_replicate_number",grep("^target_[[:digit:]]",colnames(MergedData),value=T),gsub(" ","_",tolower(colnames(Metadata_Extracted)))))
-Required_Variables <- Required_Variables[Required_Variables != "name"]
-MergedData <- MergedData[,colnames(MergedData) %in% Required_Variables]
-
-#Check for redundant data.
-#Add new project data.
-#Open qPCR sample database.
-con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
-if(dbExistsTable(con,"QPCRSample")){
-  MergedData_Check <-  tbl(con,"QPCRSample")
-  MergedData_IDs <- MergedData$uniqueid
-  MergedData_Check <- MergedData_Check %>% filter(uniqueid %in% MergedData_IDs)
-  MergedData_Check <- as.data.frame(MergedData_Check)
-  MergedData_Check_IDs <- MergedData_Check$uniqueid
-  MergedData_Append <- MergedData[!(MergedData_IDs %in% MergedData_Check_IDs),]
-  dbWriteTable(con,"QPCRSample",MergedData_Append,row.names=FALSE,append=TRUE)
-} else{
-  dbWriteTable(con,"QPCRSample",MergedData,row.names=FALSE,append=TRUE)
-}
-
-RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
-system("rm ne_10m_admin_1_states_provinces.*")
-
-
-###
+)
