@@ -132,7 +132,6 @@ tryCatch(
         }
       }
       
-      #system(paste("rm ",basename(TronkoFile),sep=""))
       system(paste("rm ",TronkoFile_tmp,sep=""))
       system(paste("rm ",SubsetFile,sep=""))
     }
@@ -142,7 +141,7 @@ tryCatch(
     TronkoObservations <- TronkoObservations[!duplicated(TronkoObservations),]
     
     #Get the year and coordinates for each sample in a project.
-    MetadataObservations <- Metadata %>% select(projectid,fastqid,sample_date,latitude,longitude) %>%
+    MetadataObservations <- Metadata %>% select(projectid,fastqid,sample_id,sample_date,latitude,longitude) %>%
       filter(!is.na(latitude) & !is.na(longitude))
     #Convert the date string to year.
     MetadataObservations$year <- as.integer(format(as.Date(MetadataObservations$sample_date,format("%Y-%m-%d")), "%Y"))
@@ -150,14 +149,19 @@ tryCatch(
     MetadataObservations$SampleID <- gsub("_","-",MetadataObservations$fastqid)
     
     #Create merged observation data set.
-    ObservationsExport <- dplyr::left_join(TronkoObservations,MetadataObservations[,c("projectid","SampleID","year","latitude","longitude")],by=c("ProjectID"="projectid","SampleID"="SampleID"))
+    ObservationsExport <- dplyr::right_join(TronkoObservations,MetadataObservations,by=c("ProjectID"="projectid","SampleID"="SampleID"))
+    #Remove entries without taxa
+    ObservationsExport <- ObservationsExport[!is.na(ObservationsExport$Taxon),]
     #Rename columns for export
     names(ObservationsExport)[names(ObservationsExport) == "ProjectID"] <- "projectId"
-    names(ObservationsExport)[names(ObservationsExport) == "SampleID"] <- "sampleId"
+    names(ObservationsExport)[names(ObservationsExport) == "sample_id"] <- "sampleId"
     
     #Designate a unique id
     ObservationsExport$id <- sapply(paste(ObservationsExport$Taxon,ObservationsExport$rank,ObservationsExport$projectId,ObservationsExport$sampleId,ObservationsExport$latitude,ObservationsExport$longitude,ObservationsExport$year),digest,algo="md5")
-
+    
+    #Retain key columns
+    ObservationsExport <- ObservationsExport[,c("id","Taxon","rank","projectId","sampleId","latitude","longitude","year")]
+    
     #Check for redundant data.
     #Add new metadata.
     if(dbExistsTable(con,"Occurence")){
