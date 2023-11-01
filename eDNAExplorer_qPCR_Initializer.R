@@ -295,7 +295,7 @@ tryCatch(
     #Change case on taxonomic rank entries
     ObservationsExport$rank <- tolower(ObservationsExport$rank)
     
-    #Check for redundant data.
+    #Check for redundant qPCR data.
     #Add new qPCR data.
     if(dbExistsTable(con,"Occurence")){
       Observations_Check <-  tbl(con,"Occurence")

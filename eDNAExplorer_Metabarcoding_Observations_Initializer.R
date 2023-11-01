@@ -132,7 +132,6 @@ tryCatch(
         }
       }
       
-      #system(paste("rm ",basename(TronkoFile),sep=""))
       system(paste("rm ",TronkoFile_tmp,sep=""))
       system(paste("rm ",SubsetFile,sep=""))
     }
