@@ -20,9 +20,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      - name: Add SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ env.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 700 ~/.ssh/id_rsa
       - name: Deploy to server
         run: |
           echo "Attempting to deploy to $DEPLOY_ENVIRONMENT environment"
           echo "Copying files to server located at $SSH_ADDRESS"
           scp -v -o StrictHostKeyChecking=no -r ./* ${{ env.SSH_USER }}@${{ env.SSH_ADDRESS }}:/home/${{ env.SSH_USER }}/eDNAExplorer
           echo "Finished deploying to $DEPLOY_ENVIRONMENT environment"
+      - name: Clean up SSH key
+        run: |
+          rm -f ~/.ssh/id_rsa
