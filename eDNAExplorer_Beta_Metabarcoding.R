@@ -33,6 +33,47 @@ db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 bucket <- Sys.getenv("S3_BUCKET")
 home_dir <- Sys.getenv("home_dir")
+ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
+
+if (length(args) != 11) {
+  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, EnvironmentalParameter, BetaDiversity", call. = FALSE)
+} else if (length(args) == 11) {
+  ProjectID <- args[1]
+  First_Date <- args[2]
+  Last_Date <- args[3]
+  Marker <- args[4]
+  Num_Mismatch <- args[5]
+  TaxonomicRank <- args[6]
+  CountThreshold <- args[7]
+  FilterThreshold <- args[8]
+  SpeciesList <- args[9]
+  EnvironmentalParameter <- args[10]
+  BetaDiversity <- args[11]
+  
+  #Define filters in Phyloseq as global parameters.
+  sample_ProjectID <<- as.character(ProjectID)
+  sample_First_Date <<- lubridate::ymd(First_Date)
+  sample_Last_Date <<- lubridate::ymd(Last_Date)
+  sample_Primer <<- as.character(Marker)
+  sample_TaxonomicRank <<- as.character(TaxonomicRank)
+  sample_Num_Mismatch <<- as.numeric(Num_Mismatch)
+  sample_CountThreshold <<- as.numeric(CountThreshold)
+  sample_FilterThreshold <<- as.numeric(FilterThreshold)
+  EnvironmentalVariable <<- as.character(EnvironmentalParameter)
+  BetaDiversityMetric <<- as.character(BetaDiversity)
+  SelectedSpeciesList <<- as.character(SpeciesList)
+  
+  CategoricalVariables <- c("site","grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
+  ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
+  FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
+  TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
+  TaxonomicNum <<- as.numeric(which(TaxonomicRanks == sample_TaxonomicRank))
+  
+  #Save plot name.
+  filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,",json",sep="_")
+  filename <- gsub("_.json",".json",filename)
+  filename <- tolower(filename)
+}
 
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
@@ -46,9 +87,9 @@ process_error <- function(e, filename = "error.json") {
   dest_filename <- sub("\\.json$", ".build", filename)
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://",bucket,"/errors/beta/", new_filename, sep = "")
+    paste("s3://",bucket,"/errors/beta/", new_filename," --endpoint-url ",ENDPOINT_URL, sep = "")
   } else {
-    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/error_", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -72,58 +113,11 @@ process_error <- function(e, filename = "error.json") {
 
 tryCatch(
   {
-    if (length(args) != 11) {
-      stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, EnvironmentalParameter, BetaDiversity", call. = FALSE)
-    } else if (length(args) == 11) {
-      ProjectID <- args[1]
-      First_Date <- args[2]
-      Last_Date <- args[3]
-      Marker <- args[4]
-      Num_Mismatch <- args[5]
-      TaxonomicRank <- args[6]
-      CountThreshold <- args[7]
-      FilterThreshold <- args[8]
-      SpeciesList <- args[9]
-      EnvironmentalParameter <- args[10]
-      BetaDiversity <- args[11]
-      
-      #Define filters in Phyloseq as global parameters.
-      sample_ProjectID <<- as.character(ProjectID)
-      sample_First_Date <<- lubridate::ymd(First_Date)
-      sample_Last_Date <<- lubridate::ymd(Last_Date)
-      sample_Primer <<- as.character(Marker)
-      sample_TaxonomicRank <<- as.character(TaxonomicRank)
-      sample_Num_Mismatch <<- as.numeric(Num_Mismatch)
-      sample_CountThreshold <<- as.numeric(CountThreshold)
-      sample_FilterThreshold <<- as.numeric(FilterThreshold)
-      EnvironmentalVariable <<- as.character(EnvironmentalParameter)
-      BetaDiversityMetric <<- as.character(BetaDiversity)
-      SelectedSpeciesList <<- as.character(SpeciesList)
-      
-      CategoricalVariables <- c("site","grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
-      ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
-      FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
-      TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-      TaxonomicNum <<- as.numeric(which(TaxonomicRanks == sample_TaxonomicRank))
-      
-      #Save plot name.
-      filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,",json",sep="_")
-      filename <- gsub("_.json",".json",filename)
-      filename <- tolower(filename)
-    }
-  },
-  error = function(e) {
-    process_error(e)
-  }
-)
-
-tryCatch(
-  {
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
     dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",dest_filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",dest_filename," --endpoint-url /",ENDPOINT_URL,sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     #Establish sql connection
@@ -140,12 +134,12 @@ tryCatch(
     
     #Read in information to map categorical labels for certain variables.
     category_file <- paste("Categories_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://",bucket,"/analysis/Categories.csv ",category_file," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("aws s3 cp s3://",bucket,"/analysis/Categories.csv ",category_file," --endpoint-url ",ENDPOINT_URL,sep=""))
     categories <- as.data.frame(fread(file=category_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A")))
     system(paste("rm ",category_file,sep=""))
     #Read in information for legends and labels
     legends_file <- paste("LabelsAndLegends_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://",bucket,"/analysis/LabelsAndLegends.csv ",legends_file," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("aws s3 cp s3://",bucket,"/analysis/LabelsAndLegends.csv ",legends_file," --endpoint-url ",ENDPOINT_URL,sep=""))
     legends_and_labels <- as.data.frame(fread(file=legends_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A")))
     system(paste("rm ",legends_file,sep=""))
     #Set up new legends and x-axis labels.
@@ -191,7 +185,7 @@ tryCatch(
     # Read in Tronko output and filter it.
     TronkoFile <- paste(sample_Primer, ".csv", sep = "")
     TronkoFile_tmp <- paste(sample_Primer,"_beta_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", sample_ProjectID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", sample_ProjectID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url ",ENDPOINT_URL, sep = ""))
     #Check if file exists.
     if(file.info(TronkoFile_tmp)$size== 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
@@ -290,7 +284,7 @@ tryCatch(
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     write(toJSON(datasets),filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
