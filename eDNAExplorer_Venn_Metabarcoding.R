@@ -31,6 +31,41 @@ db_pass <- Sys.getenv("db_pass")
 bucket <- Sys.getenv("S3_BUCKET")
 gbif_dir <- Sys.getenv("GBIF_HOME")
 home_dir <- Sys.getenv("home_dir")
+ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
+
+if (length(args) != 10) {
+  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, Geographic_Scale.", call. = FALSE)
+} else if (length(args) == 10) {
+  ProjectID <- args[1]
+  First_Date <- args[2]
+  Last_Date <- args[3]
+  Marker <- args[4]
+  Num_Mismatch <- args[5]
+  TaxonomicRank <- args[6]
+  CountThreshold <- args[7]
+  FilterThreshold <- args[8]
+  SpeciesList <- args[9]
+  Geographic_Scale <- args[10]
+  
+  CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
+  ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
+  FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
+  TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
+  TaxonomicKeyRanks <- c("kingdomKey","phylumKey","classKey","orderKey","familyKey","genusKey","speciesKey")
+  TaxonomicNum <- which(TaxonomicRanks == TaxonomicRank)
+  Project_ID <- as.character(ProjectID)
+  First_Date <- lubridate::ymd(First_Date)
+  Last_Date <- lubridate::ymd(Last_Date)
+  Marker <- as.character(Marker)
+  Num_Mismatch <- as.numeric(Num_Mismatch)
+  CountThreshold <- as.numeric(CountThreshold)
+  FilterThreshold <- as.numeric(FilterThreshold)
+  SelectedSpeciesList <- as.character(SpeciesList)
+  
+  filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,".json",sep="_")
+  filename <- gsub("_.json",".json",filename)
+  filename <- tolower(filename)
+}
 
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
@@ -44,9 +79,9 @@ process_error <- function(e, filename = "error.json") {
   dest_filename <- sub("\\.json$", ".build", filename)
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://",bucket,"/errors/venn/", new_filename, sep = "")
+    paste("s3://",bucket,"/errors/venn/", new_filename," --endpoint-url ",ENDPOINT_URL, sep = "")
   } else {
-    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/error_", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -69,52 +104,11 @@ process_error <- function(e, filename = "error.json") {
 
 tryCatch(
   {
-    if (length(args) != 10) {
-      stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, Geographic_Scale.", call. = FALSE)
-    } else if (length(args) == 10) {
-      ProjectID <- args[1]
-      First_Date <- args[2]
-      Last_Date <- args[3]
-      Marker <- args[4]
-      Num_Mismatch <- args[5]
-      TaxonomicRank <- args[6]
-      CountThreshold <- args[7]
-      FilterThreshold <- args[8]
-      SpeciesList <- args[9]
-      Geographic_Scale <- args[10]
-      
-      CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
-      ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
-      FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
-      TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-      TaxonomicKeyRanks <- c("kingdomKey","phylumKey","classKey","orderKey","familyKey","genusKey","speciesKey")
-      TaxonomicNum <- which(TaxonomicRanks == TaxonomicRank)
-      Project_ID <- as.character(ProjectID)
-      First_Date <- lubridate::ymd(First_Date)
-      Last_Date <- lubridate::ymd(Last_Date)
-      Marker <- as.character(Marker)
-      Num_Mismatch <- as.numeric(Num_Mismatch)
-      CountThreshold <- as.numeric(CountThreshold)
-      FilterThreshold <- as.numeric(FilterThreshold)
-      SelectedSpeciesList <- as.character(SpeciesList)
-      
-      filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,".json",sep="_")
-      filename <- gsub("_.json",".json",filename)
-      filename <- tolower(filename)
-    }
-  },
-  error = function(e) {
-    process_error(e)
-  }
-)
-
-tryCatch(
-  {
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
     dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
-    system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", Project_ID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+    system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", Project_ID, "/plots/", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = ""), intern = TRUE)
     system(paste("rm ", filename, sep = ""))
     
     #Establish sql connection
@@ -150,7 +144,7 @@ tryCatch(
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
     TronkoFile_tmp <- paste(Marker,"_venn_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url ",ENDPOINT_URL, sep = ""))
     #Check if file exists.
     if(file.info(TronkoFile_tmp)$size== 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
@@ -308,7 +302,7 @@ tryCatch(
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     write(toJSON(datasets),filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",Project_ID,"/plots/",filename," --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
   },
   error = function(e) {
