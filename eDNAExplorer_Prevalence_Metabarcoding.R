@@ -27,6 +27,41 @@ db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 bucket <- Sys.getenv("S3_BUCKET")
 home_dir <- Sys.getenv("home_dir")
+ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
+
+if (length(args) != 9) {
+  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList.", call. = FALSE)
+} else if (length(args) == 9) {
+  ProjectID <- args[1]
+  First_Date <- args[2]
+  Last_Date <- args[3]
+  Marker <- args[4]
+  Num_Mismatch <- args[5]
+  TaxonomicRank <- args[6]
+  CountThreshold <- args[7]
+  FilterThreshold <- args[8]
+  SpeciesList <- args[9]
+  
+  CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
+  ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
+  FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
+  TaxonomicRanks <- c("superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+  TaxonomicKeyRanks <- c("kingdomKey","phylumKey","classKey","orderKey","familyKey","genusKey","speciesKey")
+  TaxonomicNum <- which(TaxonomicRanks == TaxonomicRank)
+  Project_ID <- as.character(ProjectID)
+  First_Date <- lubridate::ymd(First_Date)
+  Last_Date <- lubridate::ymd(Last_Date)
+  Marker <- as.character(Marker)
+  Num_Mismatch <- as.numeric(Num_Mismatch)
+  TaxonomicRank <- as.character(TaxonomicRank)
+  CountThreshold <- as.numeric(CountThreshold)
+  FilterThreshold <- as.numeric(FilterThreshold)
+  SelectedSpeciesList <- as.character(SpeciesList)
+  
+  filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList,".json", sep = "_")
+  filename <- gsub("_.json",".json",filename)
+  filename <- tolower(filename)
+}
 
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
@@ -40,11 +75,11 @@ process_error <- function(e, filename = "error.json") {
   dest_filename <- sub("\\.json$", ".build", filename)
   
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://",bucket,"/errors/prevalence/", new_filename, sep = "")
+    paste("s3://",bucket,"/errors/prevalence/", new_filename," --endpoint-url ",ENDPOINT_URL, sep = "")
   } else {
-    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/error_", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
   }
-  
+
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
   system(paste("rm ",filename,sep=""))
   stop(error_message)
@@ -61,45 +96,6 @@ process_error <- function(e, filename = "error.json") {
 # SpeciesList:string Name of csv file containing selected species list.
 # Rscript --vanilla eDNAExplorer_Prevalence_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
 
-tryCatch(
-  {
-    if (length(args) != 9) {
-      stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList.", call. = FALSE)
-    } else if (length(args) == 9) {
-      ProjectID <- args[1]
-      First_Date <- args[2]
-      Last_Date <- args[3]
-      Marker <- args[4]
-      Num_Mismatch <- args[5]
-      TaxonomicRank <- args[6]
-      CountThreshold <- args[7]
-      FilterThreshold <- args[8]
-      SpeciesList <- args[9]
-      
-      CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
-      ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
-      FieldVars <- c("fastqid", "sample_date", "latitude", "longitude", "spatial_uncertainty")
-      TaxonomicRanks <- c("superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species")
-      TaxonomicKeyRanks <- c("kingdomKey","phylumKey","classKey","orderKey","familyKey","genusKey","speciesKey")
-      TaxonomicNum <- which(TaxonomicRanks == TaxonomicRank)
-      First_Date <- lubridate::ymd(First_Date)
-      Last_Date <- lubridate::ymd(Last_Date)
-      Num_Mismatch <- as.numeric(Num_Mismatch)
-      CountThreshold <- as.numeric(CountThreshold)
-      FilterThreshold <- as.numeric(FilterThreshold)
-      SelectedSpeciesList <- as.character(SpeciesList)
-      Project_ID <- as.character(ProjectID)
-      
-      filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList, sep = "_")
-      filename <- paste(filename, ".json", sep = "")
-      filename <- tolower(filename)
-    }
-  },
-  error = function(e) {
-    process_error(e)
-  }
-)
-
 # Generate the output filename for cached plots.
 tryCatch(
   {
@@ -107,7 +103,8 @@ tryCatch(
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
     dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",dest_filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    print("Uploading blank output")
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",dest_filename," --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Establish sql connection
@@ -143,10 +140,10 @@ tryCatch(
     # Read in Tronko output and filter it.
     TronkoFile <- paste(Marker, ".csv", sep = "")
     TronkoFile_tmp <- paste(Marker,"_prevalence_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""))
+    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", Project_ID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url ",ENDPOINT_URL, sep = ""))
     #Check if file exists.
     if(file.info(TronkoFile_tmp)$size== 0) {
-      stop("Error: Sample data frame is empty. Cannot proceed.")
+      stop("Error: Tronko data frame is empty. Cannot proceed.")
     }
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
     SubsetFile <- paste("subset_prevalence_",UUIDgenerate(),".csv",sep="")
@@ -155,7 +152,7 @@ tryCatch(
     TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
     #Remove samples with missing coordinates, and which are outside of the date filters.
-    TronkoInput <- TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
+    TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
     #Store the unfiltered reads.
     Tronko_Unfiltered <- TronkoInput
     # Calculate relative abundance of taxa with a given rank in the unfiltered reads.
@@ -267,7 +264,7 @@ tryCatch(
       
       datasets <- list(datasets = list(results = TronkoDB, metadata = SampleDB))
       write(toJSON(datasets), filename)
-      system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", Project_ID, "/plots/", filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = ""), intern = TRUE)
+      system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", Project_ID, "/plots/", filename, " --endpoint-url ",ENDPOINT_URL, sep = ""), intern = TRUE)
       system(paste("rm ", filename, sep = ""))
     }
     if(nrow(TronkoDB) == 0){
@@ -276,6 +273,6 @@ tryCatch(
     sapply(dbListConnections(Database_Driver), dbDisconnect)
   },
   error = function(e) {
-    process_error(e)
+    process_error(e, filename)
   }
 )

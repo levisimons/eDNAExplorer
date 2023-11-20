@@ -33,6 +33,7 @@ db_user <- Sys.getenv("db_user")
 db_pass <- Sys.getenv("db_pass")
 bucket <- Sys.getenv("S3_BUCKET")
 Database_Driver <- dbDriver("PostgreSQL")
+ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
 
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
@@ -132,7 +133,7 @@ tryCatch(
     
     #Merge metadata
     Required_Variables <- c("Site","Sample ID","Sample Replicate Number","Sample Type","Longitude","Latitude","Sample Date","Target Organism","Target Taxonomic Rank of Organism","Target qPCR Probe Fluorophore","Target Primer Probe Set Name","Target ForwardPS","Target Probe","Target ReversePS","Target Cycle Threshold","Target Min RFU threshold","Target Final RFU","Target Was organism detected")
-    Metadata <- dplyr::right_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude"),na_matches="never",multiple="all")
+    Metadata <- dplyr::right_join(Metadata_Initial[,Required_Variables],Metadata_Extracted,by=c("Sample ID"="name","Sample Date"="Sample_Date","Latitude","Longitude"),na_matches="never",multiple="all",relationship="many-to-one")
     Metadata <- Metadata[!duplicated(Metadata),]
     
     #Add project ID
@@ -264,20 +265,20 @@ tryCatch(
     con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name, user = db_user, password = db_pass)
     
     #Clear old metadata entries.
-    dbExecute(con,paste('DELETE FROM "QPCRSample" WHERE "projectid" = \'',ProjectID,'\'',sep=""))
+    dbExecute(con,paste('DELETE FROM "QPCRSample_test" WHERE "projectid" = \'',ProjectID,'\'',sep=""))
     
     #Check for redundant data.
     #Add new qPCR data.
-    if(dbExistsTable(con,"QPCRSample")){
-      Metadata_Check <-  tbl(con,"QPCRSample")
+    if(dbExistsTable(con,"QPCRSample_test")){
+      Metadata_Check <-  tbl(con,"QPCRSample_test")
       Metadata_IDs <- MergedData$uniqueid
       Metadata_Check <- Metadata_Check %>% filter(uniqueid %in% Metadata_IDs)
       Metadata_Check <- as.data.frame(Metadata_Check)
       Metadata_Check_IDs <- Metadata_Check$uniqueid
       Metadata_Append <- MergedData[!(Metadata_IDs %in% Metadata_Check_IDs),]
-      dbWriteTable(con,"QPCRSample",Metadata_Append,row.names=FALSE,append=TRUE)
+      dbWriteTable(con,"QPCRSample_test",Metadata_Append,row.names=FALSE,append=TRUE)
     } else{
-      dbWriteTable(con,"QPCRSample",MergedData,row.names=FALSE,append=TRUE)
+      dbWriteTable(con,"QPCRSample_test",MergedData,row.names=FALSE,append=TRUE)
     }
     
     #Prepare data for export to occurence table.
