@@ -117,7 +117,7 @@ tryCatch(
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
     dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",dest_filename," --endpoint-url /",ENDPOINT_URL,sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",dest_filename," --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     #Establish sql connection
