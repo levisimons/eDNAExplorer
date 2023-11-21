@@ -160,6 +160,9 @@ tryCatch(
     Metadata <- as.data.frame(Metadata)
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date)
+    if(sum(Metadata[,EnvironmentalVariable])<=0 || all(is.na(Metadata[,EnvironmentalVariable]))){
+      stop("There is no data available for the environmental variable selected in the 'Variable' dropdown above in the area(s) where this project is located.")
+    }
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
     }
@@ -246,7 +249,8 @@ tryCatch(
       if(nsamples(AbundanceFiltered)>1 & ntaxa(AbundanceFiltered)>1){
         if(BetaDiversityMetric!="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F)}
         if(BetaDiversityMetric=="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F,binary=T)}
-        if(sum(!is.nan(BetaDist))>1 & sum(BetaDist)>0){
+        if(sum(BetaDist)<=0){stop(paste("There is not enough data in this project to calculate",BetaDiversityMetric,"beta diversity for the current filter settings."))}
+        if(sum(!is.nan(BetaDist))>1){
           ordination = ordinate(AbundanceFiltered, method="PCoA", distance=BetaDist)
           AbundanceFiltered_df <- data.frame(sample_data(AbundanceFiltered))
           if(length(unique(AbundanceFiltered@sam_data[[EnvironmentalVariable]]))>1){
