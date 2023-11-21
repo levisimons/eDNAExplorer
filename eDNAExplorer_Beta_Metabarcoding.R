@@ -246,7 +246,7 @@ tryCatch(
       if(nsamples(AbundanceFiltered)>1 & ntaxa(AbundanceFiltered)>1){
         if(BetaDiversityMetric!="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F)}
         if(BetaDiversityMetric=="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F,binary=T)}
-        if(sum(!is.nan(BetaDist))>1){
+        if(sum(!is.nan(BetaDist))>1 & sum(BetaDist)>0){
           ordination = ordinate(AbundanceFiltered, method="PCoA", distance=BetaDist)
           AbundanceFiltered_df <- data.frame(sample_data(AbundanceFiltered))
           if(length(unique(AbundanceFiltered@sam_data[[EnvironmentalVariable]]))>1){
