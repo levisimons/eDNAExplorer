@@ -160,7 +160,7 @@ tryCatch(
     Metadata <- as.data.frame(Metadata)
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date)
-    if(sum(Metadata[,EnvironmentalVariable])<=0 || all(is.na(Metadata[,EnvironmentalVariable]))){
+    if(all(is.na(Metadata[,EnvironmentalVariable]))){
       stop("There is no data available for the environmental variable selected in the 'Variable' dropdown above in the area(s) where this project is located.")
     }
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
