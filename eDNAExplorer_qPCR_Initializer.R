@@ -78,7 +78,7 @@ tryCatch(
 tryCatch(
   {
     #Read in qPCR project data.
-    Project_Data <- system(paste("aws s3 cp s3:/",bucket,"projects",ProjectID,"QPCR.csv - --endpoint-url https://js2.jetstream-cloud.org:8001/",sep="/"),intern=TRUE)
+    Project_Data <- system(paste("aws s3 cp s3://",bucket,"/projects/",ProjectID,"/QPCR.csv - --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
     if(length(Project_Data)==0) {
       stop("Error: No initial metadata present.")
     }
