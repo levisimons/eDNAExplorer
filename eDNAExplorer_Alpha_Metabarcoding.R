@@ -1,7 +1,6 @@
 #!/usr/bin/env Rscript
 rm(list = ls())
 args <- commandArgs(trailingOnly = TRUE)
-#require(aws.s3)
 require(tidyr)
 require(dplyr)
 require(vegan)
@@ -219,7 +218,6 @@ tryCatch(
       system(paste("rm ",legends_file,sep=""))
       #Set up new legends and x-axis labels.
       new_legend <- legends_and_labels[legends_and_labels$Environmental_Variable==EnvironmentalVariable,"Legend"]
-      #new_axis_label <- legends_and_labels[legends_and_labels$Environmental_Variable==EnvironmentalVariable,"x_axis"]
       
       #Create OTU matrix
       otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
@@ -248,6 +246,8 @@ tryCatch(
           x_label[is.na(x_label)] <- "no data available"
           tmp$x <- as.factor(x_label)
         }
+        #Determine variable frequency.
+        tmp <- dplyr::left_join(tmp,as.data.frame(table(tmp$x)),by=c("x"="Var1"))
         #Run a Kruskal-Wallis test between alpha diversity and selected environmental variable.
         if(length(unique(na.omit(tmp$x)))>1){
           test <- suppressWarnings(kruskal.test(tmp$y ~ tmp$x, data = tmp))
@@ -256,9 +256,18 @@ tryCatch(
           Stats_Message <- "Not enough variation in environmental variable to run Kruskal-Wallis test."
         }
         #General a violin plot of alpha diversity versus an environmental variable.
-        p <- ggplot(tmp, aes(x=x, y=y))+
-          labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=new_legend, y = AlphaDiversityMetric)+
-          geom_violin()+theme_bw()+geom_point(position = position_jitter(seed = 1, width = 0.2))+guides(fill=guide_legend(title=new_legend))
+        if(max(tmp$Freq) > 1){
+          p <- ggplot()+geom_violin(data = tmp %>% filter(Freq > 1),aes(x = x, y = y))+ 
+            geom_point(data = tmp %>% filter(Freq==1),aes(x = x, y = y),position = position_jitter(seed = 1, width = 0.2))+
+            labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=new_legend, y = AlphaDiversityMetric)+
+            theme_bw()+guides(fill=guide_legend(title=new_legend))
+        }
+        if(max(tmp$Freq) <= 1){
+          p <- ggplot()+ 
+            geom_point(data = tmp %>% filter(Freq==1),aes(x = x, y = y),position = position_jitter(seed = 1, width = 0.2))+
+            labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=new_legend, y = AlphaDiversityMetric)+
+            theme_bw()+guides(fill=guide_legend(title=new_legend))
+        }
       }
       
       if(EnvironmentalVariable %in% ContinuousVariables){
@@ -278,7 +287,8 @@ tryCatch(
           labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=new_legend, y = AlphaDiversityMetric)+
           theme_bw()+geom_point()+geom_smooth()+guides(fill=guide_legend(title=new_legend))
       }
-    } else {
+    }
+    if(nrow(TronkoDB) <= 1){
       Stat_test <- "Not enough data to perform a Kruskal-Wallis test on alpha diversity."
       p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
     }

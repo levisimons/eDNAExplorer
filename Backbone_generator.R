@@ -219,22 +219,22 @@ filtered_taxonomy_export <- filtered_taxonomy_export[!duplicated(filtered_taxono
 IUCN_input <- read.table(file="iucn.tsv",header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"",as.is=TRUE, encoding = "UTF-8",na = c("", "NA", "N/A"))
 #Create map for IUCN status values.
 IUCN_categories <- data.frame(iucnRedListCategory  = c("EX","NE","DD","LC","NT","VU","EN","CR","EW"),
-                  iucn_status = c("Extinct","Not Evaluated","Data Deficient","Least Concern","Near Threatened","Vulnerable","Endangered","Critically Endangered","Extinct in the Wild"))
+                              iucnStatus = c("Extinct","Not Evaluated","Data Deficient","Least Concern","Near Threatened","Vulnerable","Endangered","Critically Endangered","Extinct in the Wild"))
 IUCN <- dplyr::left_join(IUCN_input,IUCN_categories)
 #Remove doubtful taxonomies
 IUCN <- IUCN[IUCN$taxonomicStatus!="DOUBTFUL",]
 #Retain key columns
-IUCN <- IUCN[,c("species","genus","family","order","class","phylum","kingdom","speciesKey","genusKey","familyKey","orderKey","classKey","phylumKey","kingdomKey","iucn_status")]
+IUCN <- IUCN[,c("species","genus","family","order","class","phylum","kingdom","speciesKey","genusKey","familyKey","orderKey","classKey","phylumKey","kingdomKey","iucnStatus")]
 IUCN <- IUCN[!duplicated(IUCN),]
 
 #Merge IUCN status into Taxonomy output.
 filtered_taxonomy_export_iucn <- dplyr::left_join(filtered_taxonomy_export,IUCN,na_matches="never")
 #Replace NA values in iucn_status with Not Evaluated
-filtered_taxonomy_export_iucn$iucn_status[is.na(filtered_taxonomy_export_iucn$iucn_status)] <- "Not Evaluated"
+filtered_taxonomy_export_iucn$iucnStatus[is.na(filtered_taxonomy_export_iucn$iucnStatus)] <- "Not Evaluated"
 filtered_taxonomy_export_iucn <- filtered_taxonomy_export_iucn[!duplicated(filtered_taxonomy_export_iucn),]
 
 #Create unique ID for the Taxonomy database.
-filtered_taxonomy_export_iucn$UniqueID <- sapply(paste(filtered_taxonomy_export_iucn$species,filtered_taxonomy_export_iucn$genus,filtered_taxonomy_export_iucn$family,filtered_taxonomy_export_iucn$order,filtered_taxonomy_export_iucn$class,filtered_taxonomy_export_iucn$phylum,filtered_taxonomy_export_iucn$kingdom,filtered_taxonomy_export_iucn$Taxon,filtered_taxonomy_export_iucn$rank,filtered_taxonomy_export_iucn$Image_URL,filtered_taxonomy_export_iucn$Common_Name,filtered_taxonomy_export_iucn$iucn_status),digest,algo="md5")
+filtered_taxonomy_export_iucn$UniqueID <- sapply(paste(filtered_taxonomy_export_iucn$species,filtered_taxonomy_export_iucn$genus,filtered_taxonomy_export_iucn$family,filtered_taxonomy_export_iucn$order,filtered_taxonomy_export_iucn$class,filtered_taxonomy_export_iucn$phylum,filtered_taxonomy_export_iucn$kingdom,filtered_taxonomy_export_iucn$Taxon,filtered_taxonomy_export_iucn$rank,filtered_taxonomy_export_iucn$Image_URL,filtered_taxonomy_export_iucn$Common_Name,filtered_taxonomy_export_iucn$iucnStatus),digest,algo="md5")
 
 #Save combined NCBI and GBIF taxonomies with common names merged in.
 write.table(filtered_taxonomy_export_iucn, paste(taxonomy_home,"filtered_taxonomy_export_iucn.csv",sep="/"), sep = ",", col.names = TRUE, row.names = FALSE)
@@ -243,5 +243,5 @@ con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,
 #Clear old taxonomy entries.
 dbExecute(con,'DELETE FROM "Taxonomy"')
 #Write out new taxonomy table
-dbWriteTable(con,"Taxonomy",filtered_taxonomy_export,row.names=FALSE,append=TRUE)
+dbWriteTable(con,"Taxonomy",filtered_taxonomy_export_iucn,row.names=FALSE,append=TRUE)
 sapply(dbListConnections(Database_Driver), dbDisconnect)
