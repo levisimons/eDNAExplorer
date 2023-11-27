@@ -25,7 +25,8 @@ ProjectID <- args[1]
 #Establish database credentials.
 readRenviron(".env")
 Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
-           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
+           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"),
+           "PROJ_LIB" = Sys.getenv("PROJ_LIB"))
 db_host <- Sys.getenv("db_host")
 db_port <- Sys.getenv("db_port")
 db_name <- Sys.getenv("db_name")
