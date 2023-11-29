@@ -51,7 +51,7 @@ process_error <- function(e, filename = "error.json") {
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
     paste("s3://",bucket,"/errors/observations/", new_filename, sep = "")
   } else {
-    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -93,7 +93,7 @@ tryCatch(
     Primers <- na.omit(unique(unlist(Metadata[,Markers])))
     
     #Read in Tronko-assign output files.  Standardize sample IDs within them.
-    TronkoBucket <- system(paste("aws s3 ls s3://",bucket,"/tronko_output/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+    TronkoBucket <- system(paste("aws s3 ls s3://",bucket,"/tronko_output/",ProjectID," --recursive --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
     TronkoBucket <- read.table(text = paste(TronkoBucket,sep = ""),header = FALSE)
     colnames(TronkoBucket) <- c("Date", "Time", "Size","Filename")
     TronkoFiles <- unique(TronkoBucket$Filename)
