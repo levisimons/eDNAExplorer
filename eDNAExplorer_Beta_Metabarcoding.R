@@ -155,7 +155,6 @@ tryCatch(
     total_Samples <- nrow(Metadata_Unfiltered)
     Metadata <- Metadata %>%
       filter(projectid == sample_ProjectID) %>%
-      filter(!is.na(latitude) & !is.na(longitude)) %>%
       filter(!is.na(!!sym(EnvironmentalVariable)))
     Metadata <- as.data.frame(Metadata)
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
