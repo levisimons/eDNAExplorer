@@ -34,6 +34,7 @@ gbif_dir <- Sys.getenv("GBIF_HOME")
 bucket <- Sys.getenv("S3_BUCKET")
 taxonomy_home <- Sys.getenv("taxonomy_home")
 Database_Driver <- dbDriver("PostgreSQL")
+ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
 
 # Write error output to our json file.
 process_error <- function(e, filename = "error.json") {
@@ -49,7 +50,7 @@ process_error <- function(e, filename = "error.json") {
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
     paste("s3://",bucket,"/errors/taxonomy/", new_filename, sep = "")
   } else {
-    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url https://js2.jetstream-cloud.org:8001/", sep = "")
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -130,7 +131,7 @@ tryCatch(
     #Loop over primers to add Tronko-assign data to database, along with associate Phylopic metadata.
     for(Primer in Primers){
       #Read in Tronko-assign output files.  Standardize sample IDs within them.
-      TronkoBucket <- system(paste("aws s3 ls s3://",bucket,"/projects/",ProjectID," --recursive --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""),intern=TRUE)
+      TronkoBucket <- system(paste("aws s3 ls s3://",bucket,"/projects/",ProjectID," --recursive --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
       TronkoBucket <- read.table(text = paste(TronkoBucket,sep = ""),header = FALSE)
       colnames(TronkoBucket) <- c("Date", "Time", "Size","Filename")
       TronkoFiles <- unique(TronkoBucket$Filename)
@@ -141,7 +142,7 @@ tryCatch(
         i=1
         #TronkoHeaders <- c("Readname","Taxonomic_Path","Score","Forward_Mismatch","Reverse_Mismatch","Tree_Number","Node_Number")
         for(TronkoFile in TronkoFiles){
-          system(paste("aws s3 cp s3://",bucket,"/",TronkoFile," ",basename(TronkoFile)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+          system(paste("aws s3 cp s3://",bucket,"/",TronkoFile," ",basename(TronkoFile)," --endpoint-url ",ENDPOINT_URL,sep=""))
           TronkoInput <- fread(file=basename(TronkoFile),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
           if(nrow(TronkoInput)>0){
             TronkoInput <- as.data.frame(TronkoInput)
@@ -162,7 +163,7 @@ tryCatch(
           ASVInputs <- list()
           m=1
           for(TronkoASV in TronkoASVs){
-            system(paste("aws s3 cp s3://",bucket,"/",TronkoASV," ",basename(TronkoASV)," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+            system(paste("aws s3 cp s3://",bucket,"/",TronkoASV," ",basename(TronkoASV)," --endpoint-url ",ENDPOINT_URL,sep=""))
             ASVInput <- fread(file=basename(TronkoASV),header=TRUE, sep="\t",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A"))
             if(nrow(ASVInput)>0){
               print(paste(Primer,j,length(TronkoASVs)))
@@ -317,7 +318,7 @@ tryCatch(
         #Save Tronko output.
         TronkoOutput_Filename <- paste(Primer,".csv",sep="")
         write.table(x=TronkoProject,file=TronkoOutput_Filename,quote=FALSE,sep=",",row.names = FALSE)
-        system(paste("aws s3 cp ",TronkoOutput_Filename," s3://",bucket,"/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+        system(paste("aws s3 cp ",TronkoOutput_Filename," s3://",bucket,"/tronko_output/",ProjectID,"/",TronkoOutput_Filename," --endpoint-url ",ENDPOINT_URL,sep=""))
         system(paste("rm ",TronkoOutput_Filename,sep=""))
       }
     }
@@ -328,14 +329,14 @@ tryCatch(
     colnames(TaxaCount_Project) <- c("SampleID","Unique_Taxa")
     TaxaCount_Filename <- paste("taxa_counts_",ProjectID,".json",sep="")
     write(toJSON(TaxaCount_Project),TaxaCount_Filename)
-    system(paste("aws s3 cp ",TaxaCount_Filename," s3://",bucket,"/projects/",ProjectID,"/plots/",TaxaCount_Filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("aws s3 cp ",TaxaCount_Filename," s3://",bucket,"/projects/",ProjectID,"/plots/",TaxaCount_Filename," --endpoint-url ",ENDPOINT_URL,sep=""))
     system(paste("rm ",TaxaCount_Filename,sep=""))
     RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
     
     #Save log file.
     filename <- paste(gsub(" ","_",date()),"eDNAExplorer_Metabarcoding_Taxonomy_Initializer.R.log",sep="_")
     system(paste("echo > ",filename,sep=""))
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/log/",filename," --endpoint-url https://js2.jetstream-cloud.org:8001/",sep=""))
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/log/",filename," --endpoint-url ",ENDPOINT_URL,sep=""))
     system(paste("rm ",filename))
     
     #Trigger script to store unique eDNA occurrences.

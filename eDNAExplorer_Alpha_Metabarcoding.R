@@ -140,8 +140,7 @@ tryCatch(
     Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
     total_Samples <- nrow(Metadata_Unfiltered)
     Metadata <- Metadata %>%
-      filter(projectid == sample_ProjectID) %>%
-      filter(!is.na(latitude) & !is.na(longitude))
+      filter(projectid == sample_ProjectID)
     Metadata <- as.data.frame(Metadata)
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date)
@@ -174,7 +173,7 @@ tryCatch(
     TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
     TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
     #Remove samples with missing coordinates, and which are outside of the date filters.
-    TronkoInput <- TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
+    TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
     #Store the unfiltered reads.
     Tronko_Unfiltered <- TronkoInput
     # Calculate relative abundance of taxa with a given rank in the unfiltered reads.
@@ -256,9 +255,15 @@ tryCatch(
           Stats_Message <- "Not enough variation in environmental variable to run Kruskal-Wallis test."
         }
         #General a violin plot of alpha diversity versus an environmental variable.
-        if(max(tmp$Freq) > 1){
+        if(max(tmp$Freq) > 1 & min(tmp$Freq)==1){
           p <- ggplot()+geom_violin(data = tmp %>% filter(Freq > 1),aes(x = x, y = y))+ 
             geom_point(data = tmp %>% filter(Freq==1),aes(x = x, y = y),position = position_jitter(seed = 1, width = 0.2))+
+            labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=new_legend, y = AlphaDiversityMetric)+
+            theme_bw()+guides(fill=guide_legend(title=new_legend))
+        }
+        if(max(tmp$Freq) > 1){
+          p <- ggplot()+geom_violin(data = tmp,aes(x = x, y = y))+ 
+            geom_point(data = tmp,aes(x = x, y = y),position = position_jitter(seed = 1, width = 0.2))+
             labs(title=paste(AlphaDiversityMetric," versus ",gsub("_"," ",EnvironmentalVariable),".\nSamples collected between: ",sample_First_Date," and ",sample_Last_Date,"\nRelative abundance minimum of ",100*sample_FilterThreshold,"%.\nReads per sample minimum: ",sample_CountThreshold,"\n",Stats_Message,sep=""),x=new_legend, y = AlphaDiversityMetric)+
             theme_bw()+guides(fill=guide_legend(title=new_legend))
         }
