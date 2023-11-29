@@ -140,8 +140,7 @@ tryCatch(
     Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
     total_Samples <- nrow(Metadata_Unfiltered)
     Metadata <- Metadata %>%
-      filter(projectid == sample_ProjectID) %>%
-      filter(!is.na(latitude) & !is.na(longitude))
+      filter(projectid == sample_ProjectID)
     Metadata <- as.data.frame(Metadata)
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date)

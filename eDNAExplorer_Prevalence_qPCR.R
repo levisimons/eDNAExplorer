@@ -66,24 +66,21 @@ process_error <- function(e, filename = "error.json") {
 # First_Date:string YYYY-MM-DD
 # Last_Date:string YYYY-MM-DD
 # SpeciesList:string Name of csv file containing selected species list.
-# EnvironmentalParameter:string Environmental variable to analyze against alpha diversity
-# Rscript --vanilla ednaexplorer_staging_Alpha_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList" "EnvironmentalParameter" "AlphaDiversity"
+# Rscript --vanilla eDNAExplorer_Prevalence_qPCR.R "ProjectID" "First_Date" "Last_Date" "Marker" "SpeciesList"
 
 tryCatch(
   {
-    if (length(args) != 5) {
-      stop("Need the following inputs: ProjectID, First_Date, Last_Date, SpeciesList, EnvironmentalParameter.", call. = FALSE)
-    } else if (length(args) == 5) {
+    if (length(args) != 4) {
+      stop("Need the following inputs: ProjectID, First_Date, Last_Date, SpeciesList.", call. = FALSE)
+    } else if (length(args) == 4) {
       ProjectID <- args[1]
       First_Date <- args[2]
       Last_Date <- args[3]
       SpeciesList <- args[4]
-      EnvironmentalParameter <- args[5]
       
       First_Date <- lubridate::ymd(First_Date)
       Last_Date <- lubridate::ymd(Last_Date)
       SelectedSpeciesList <- as.character(SpeciesList)
-      EnvironmentalParameter <- as.character(EnvironmentalParameter)
       ProjectID <- as.character(ProjectID)
       
       CategoricalVariables <- c("site","grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
@@ -91,10 +88,9 @@ tryCatch(
       FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
       TaxonomicRanks <- c("superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species")
       TaxonomicKeyRanks <- c("kingdomKey","phylumKey","classKey","orderKey","familyKey","genusKey","speciesKey")
-      TaxonomicNum <- which(TaxonomicRanks == TaxonomicRank)
       
       #Save plot name.
-      filename <- paste("Prevalence_qPCR_FirstDate",First_Date,"LastDate",Last_Date,"Variable",EnvironmentalVariable,"SpeciesList",SelectedSpeciesList,".json",sep="_")
+      filename <- paste("Prevalence_qPCR_FirstDate",First_Date,"LastDate",Last_Date,"SpeciesList",SelectedSpeciesList,".json",sep="_")
       filename <- gsub("_.json",".json",filename)
       filename <- tolower(filename)
     }
@@ -139,8 +135,7 @@ tryCatch(
       filter(!is.na(latitude) & !is.na(longitude))
     qPCR_input <- as.data.frame(qPCR_input)
     qPCR_input$sample_date <- lubridate::ymd(qPCR_input$sample_date)
-    qPCR_input <- qPCR_input %>% filter(sample_date >= First_Date & sample_date <= Last_Date) %>% 
-      filter(!is.na(!!sym(EnvironmentalParameter))) 
+    qPCR_input <- qPCR_input %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
     #Filter results by species list.
     if (SelectedSpeciesList != "None") {
       qPCR_input <- qPCR_input %>% filter(target_organism %in% SpeciesList_df$name)
@@ -148,12 +143,13 @@ tryCatch(
     if(nrow(qPCR_input) == 0 || ncol(qPCR_input) == 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
     }
-    filteredSamples <- nrow(qPCR_input)
+    num_filteredSamples <- nrow(qPCR_input)
     
     # Read in Taxonomy output and filter it.
     TaxonomyInput <- tbl(con, "Taxonomy")
     # Get taxonomic rank
     TaxonomicRank <- tolower(unique(na.omit(qPCR_input$target_taxonomic_rank_of_organism)))
+    TaxonomicNum <- which(TaxonomicRanks == TaxonomicRank)
     if (nrow(qPCR_input) > 0) {
       TaxaList <- na.omit(unique(qPCR_input$target_organism))
     }
@@ -232,7 +228,7 @@ tryCatch(
       datasets <- list(datasets = list(results=plotly_json(p, FALSE),metadata=toJSON(SampleDB)))
       
       #Save plot.
-      filename <- paste("Prevalence_qPCR_FirstDate",First_Date,"LastDate",Last_Date,"Variable",EnvironmentalVariable,"SpeciesList",SelectedSpeciesList,".json",sep="_")
+      filename <- paste("Prevalence_qPCR_FirstDate",First_Date,"LastDate",Last_Date,"SpeciesList",SelectedSpeciesList,".json",sep="_")
       filename <- gsub("_.json",".json",filename)
       filename <- tolower(filename)
       write(toJSON(datasets), filename)
