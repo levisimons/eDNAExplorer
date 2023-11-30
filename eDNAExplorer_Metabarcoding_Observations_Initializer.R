@@ -51,7 +51,7 @@ process_error <- function(e, filename = "error.json") {
   s3_path <- if (is.null(ProjectID) || ProjectID == "") {
     paste("s3://",bucket,"/errors/observations/", new_filename, sep = "")
   } else {
-    paste("s3://",bucket,"/projects/", ProjectID, "/plots/", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
+    paste("s3://",bucket,"/projects/", ProjectID, "/plots/error_", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -141,8 +141,7 @@ tryCatch(
     TronkoObservations <- TronkoObservations[!duplicated(TronkoObservations),]
     
     #Get the year and coordinates for each sample in a project.
-    MetadataObservations <- Metadata %>% select(projectid,fastqid,sample_id,sample_date,latitude,longitude) %>%
-      filter(!is.na(latitude) & !is.na(longitude))
+    MetadataObservations <- Metadata %>% select(projectid,fastqid,sample_id,sample_date,latitude,longitude)
     #Convert the date string to year.
     MetadataObservations$year <- as.integer(format(as.Date(MetadataObservations$sample_date,format("%Y-%m-%d")), "%Y"))
     #Make a sample ID column to match the format with Tronko-assign outputs.
@@ -159,8 +158,46 @@ tryCatch(
     #Designate a unique id
     ObservationsExport$id <- sapply(paste(ObservationsExport$Taxon,ObservationsExport$rank,ObservationsExport$projectId,ObservationsExport$sampleId,ObservationsExport$latitude,ObservationsExport$longitude,ObservationsExport$year),digest,algo="md5")
     
+    #Get common names for each taxon observation.
+    if (nrow(ObservationsExport) > 0) {
+      TaxaList <- na.omit(unique(ObservationsExport$Taxon))
+    }
+    if (nrow(ObservationsExport) == 0) {
+      TaxaList <- c()
+    }
+    TaxonomicRanks <- c("superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+    TaxonomicKeyRanks <- c("kingdomKey","phylumKey","classKey","orderKey","familyKey","genusKey","speciesKey")
+    TaxonomyInput <- tbl(con, "Taxonomy")
+    TaxonomyInput <- TaxonomyInput %>%
+      filter(Taxon %in% TaxaList) %>%
+      select(TaxonomicRanks[2:length(TaxonomicRanks)],TaxonomicKeyRanks,Taxon,rank,Common_Name)
+    TaxonomyDB <- as.data.frame(TaxonomyInput)
+    #Figure out which taxonomy version is more complete.
+    TaxonomyDB$rankCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicRanks]))
+    TaxonomyDB$rankKeyCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicKeyRanks]))
+    TaxonomyDB <- TaxonomyDB %>%
+      group_by(Taxon) %>%
+      slice_max(order_by = rankCount, n = 1) %>%
+      ungroup()
+    TaxonomyDB <- TaxonomyDB %>%
+      group_by(Taxon) %>%
+      slice_max(order_by = rankKeyCount, n = 1) %>%
+      ungroup()
+    #Figure out which common_name is most common per taxon.
+    TaxonomyDB <- TaxonomyDB %>%
+      group_by(Taxon) %>%
+      mutate(Most_Common_Name = ifelse(all(is.na(Common_Name)), NA, names(which.max(table(Common_Name[!is.na(Common_Name)]))))) %>%
+      ungroup()
+    TaxonomyDB$Common_Name <- TaxonomyDB$Most_Common_Name
+    TaxonomyDB$Most_Common_Name <- NULL
+    TaxonomyDB <- as.data.frame(TaxonomyDB)
+    TaxonomyDB$rankCount <- NULL
+    TaxonomyDB <- TaxonomyDB[!duplicated(TaxonomyDB),]
+    #Merge in common names to occurrence taxonomies.
+    ObservationsExport <- dplyr::left_join(ObservationsExport,TaxonomyDB[,c("Taxon","rank","Common_Name")],by=c("Taxon","rank"))
+    
     #Retain key columns
-    ObservationsExport <- ObservationsExport[,c("id","Taxon","rank","projectId","sampleId","latitude","longitude","year")]
+    ObservationsExport <- ObservationsExport[,c("id","Taxon","rank","Common_Name","projectId","sampleId","latitude","longitude","year")]
     
     #Check for redundant data.
     #Add new metadata.
