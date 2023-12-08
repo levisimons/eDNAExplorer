@@ -59,21 +59,24 @@ if (length(args) != 10) {
   FilterThreshold <- as.numeric(FilterThreshold)
   SelectedSpeciesList <- as.character(SpeciesList)
   
-  if(SpeciesList!="None"){
+  if(SiteList!="None"){
     #Get alphabetized site list for a given project.
-    SelectedSiteList <- str_split_1(SiteList,pattern=",")
+    SelectedSiteList <- strsplit(SiteList,split=",")[[1]]
     Database_Driver <- dbDriver("PostgreSQL")
     sapply(dbListConnections(Database_Driver), dbDisconnect)
     con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
     ProjectSites <- tbl(con, "ProjectSite")
     ProjectSites <- ProjectSites %>% filter(projectId == Project_ID) %>% select(id,name)
     ProjectSites <- as.data.frame(ProjectSites)
-    FilterSites <- ProjectSites[ProjectSites$id %in% SelectedSiteList,"id"]
-    FilterSites <- FilterSites[order(names(setNames(FilterSites, FilterSites)))]
+    FilterSites <- ProjectSites[ProjectSites$id %in% SelectedSiteList,]
+    #Sort sites alphabetically
+    FilterSites <- FilterSites[order(FilterSites$id),]
+    FilterSite_ids <- FilterSites$id
+    #Get site IDs
     #Get site names corresponding to selected site IDs.
     FilterSite_names <- FilterSites$name
     #Generate the list of alphabetized sites, but only use their last four characters.
-    FilterSites_shortened <- sapply(FilterSites, function(x) substr(x, nchar(x) - 3, nchar(x)))
+    FilterSites_shortened <- sapply(FilterSite_ids, function(x) substr(x, nchar(x) - 3, nchar(x)))
     # Concatenate into a single string with commas
     FilterSites_shortened <- paste(FilterSites_shortened, collapse = ",")
   }
@@ -102,7 +105,7 @@ process_error <- function(e, filename = "error.json") {
   } else {
     paste("s3://",bucket,"/projects/", ProjectID, "/plots/error_", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
   }
-
+  
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
   system(paste("rm ",filename,sep=""))
   stop(error_message)
@@ -153,9 +156,17 @@ tryCatch(
       Metadata_Unfiltered <- Metadata_Unfiltered[Metadata_Unfiltered$site %in% FilterSite_names,]
     }
     total_Samples <- nrow(Metadata_Unfiltered)
-    Metadata <- Metadata %>%
-      filter(projectid == Project_ID)
-    Metadata <- as.data.frame(Metadata)
+    if(SiteList!="None"){
+      Metadata <- Metadata %>%
+        filter(projectid == Project_ID)
+      Metadata <- as.data.frame(Metadata)
+      Metadata <- Metadata[Metadata$site %in% FilterSite_names,]
+    }
+    if(SiteList=="None"){
+      Metadata <- Metadata %>%
+        filter(projectid == Project_ID)
+      Metadata <- as.data.frame(Metadata)
+    }
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
