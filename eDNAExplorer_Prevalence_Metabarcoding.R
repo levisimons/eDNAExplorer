@@ -29,9 +29,9 @@ bucket <- Sys.getenv("S3_BUCKET")
 home_dir <- Sys.getenv("home_dir")
 ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
 
-if (length(args) != 9) {
-  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList.", call. = FALSE)
-} else if (length(args) == 9) {
+if (length(args) != 10) {
+  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, SiteList.", call. = FALSE)
+} else if (length(args) == 10) {
   ProjectID <- args[1]
   First_Date <- args[2]
   Last_Date <- args[3]
@@ -41,6 +41,7 @@ if (length(args) != 9) {
   CountThreshold <- args[7]
   FilterThreshold <- args[8]
   SpeciesList <- args[9]
+  SiteList <- args[10]
   
   CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
   ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
@@ -58,7 +59,29 @@ if (length(args) != 9) {
   FilterThreshold <- as.numeric(FilterThreshold)
   SelectedSpeciesList <- as.character(SpeciesList)
   
-  filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList,".json", sep = "_")
+  if(SpeciesList!="None"){
+    #Get alphabetized site list for a given project.
+    SelectedSiteList <- str_split_1(SiteList,pattern=",")
+    Database_Driver <- dbDriver("PostgreSQL")
+    sapply(dbListConnections(Database_Driver), dbDisconnect)
+    con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
+    ProjectSites <- tbl(con, "ProjectSite")
+    ProjectSites <- ProjectSites %>% filter(projectId == Project_ID) %>% select(id,name)
+    ProjectSites <- as.data.frame(ProjectSites)
+    FilterSites <- ProjectSites[ProjectSites$id %in% SelectedSiteList,"id"]
+    FilterSites <- FilterSites[order(names(setNames(FilterSites, FilterSites)))]
+    #Get site names corresponding to selected site IDs.
+    FilterSite_names <- FilterSites$name
+    #Generate the list of alphabetized sites, but only use their last four characters.
+    FilterSites_shortened <- sapply(FilterSites, function(x) substr(x, nchar(x) - 3, nchar(x)))
+    # Concatenate into a single string with commas
+    FilterSites_shortened <- paste(FilterSites_shortened, collapse = ",")
+  }
+  if(SpeciesList=="None"){
+    FilterSites_shortened <- "None"
+  }
+  
+  filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList,"Sites",FilterSites_shortened,".json", sep = "_")
   filename <- gsub("_.json",".json",filename)
   filename <- tolower(filename)
 }
@@ -113,7 +136,7 @@ tryCatch(
     con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
     
     # Read in species list
-    if (SelectedSpeciesList != "None") {
+    if(SelectedSpeciesList != "None") {
       SpeciesList_df <- tbl(con, "SpeciesListItem")
       SpeciesList_df <- SpeciesList_df %>% filter(species_list == SelectedSpeciesList)
       SpeciesList_df <- as.data.frame(SpeciesList_df)
@@ -125,6 +148,10 @@ tryCatch(
     # Get the number of samples in a project before filtering.
     Metadata_Unfiltered <- Metadata %>% filter(projectid == Project_ID)
     Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
+    #Metadata filtering if sites are selected for furthering filtering.
+    if(SiteList!="None"){
+      Metadata_Unfiltered <- Metadata_Unfiltered[Metadata_Unfiltered$site %in% FilterSite_names,]
+    }
     total_Samples <- nrow(Metadata_Unfiltered)
     Metadata <- Metadata %>%
       filter(projectid == Project_ID)
