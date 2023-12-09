@@ -30,7 +30,7 @@ home_dir <- Sys.getenv("home_dir")
 ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
 
 if (length(args) != 10) {
-  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, SiteList.", call. = FALSE)
+  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, Sites.", call. = FALSE)
 } else if (length(args) == 10) {
   ProjectID <- args[1]
   First_Date <- args[2]
@@ -41,7 +41,7 @@ if (length(args) != 10) {
   CountThreshold <- args[7]
   FilterThreshold <- args[8]
   SpeciesList <- args[9]
-  SiteList <- args[10]
+  Sites <- args[10]
   
   CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
   ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
@@ -59,9 +59,9 @@ if (length(args) != 10) {
   FilterThreshold <- as.numeric(FilterThreshold)
   SelectedSpeciesList <- as.character(SpeciesList)
   
-  if(SiteList!="None"){
+  if(Sites!="None"){
     #Get alphabetized site list for a given project.
-    SelectedSiteList <- strsplit(SiteList,split=",")[[1]]
+    SelectedSiteList <- strsplit(Sites,split=",")[[1]]
     Database_Driver <- dbDriver("PostgreSQL")
     sapply(dbListConnections(Database_Driver), dbDisconnect)
     con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
@@ -152,17 +152,17 @@ tryCatch(
     Metadata_Unfiltered <- Metadata %>% filter(projectid == Project_ID)
     Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
     #Metadata filtering if sites are selected for furthering filtering.
-    if(SiteList!="None"){
+    if(Sites!="None"){
       Metadata_Unfiltered <- Metadata_Unfiltered[Metadata_Unfiltered$site %in% FilterSite_names,]
     }
     total_Samples <- nrow(Metadata_Unfiltered)
-    if(SiteList!="None"){
+    if(Sites!="None"){
       Metadata <- Metadata %>%
         filter(projectid == Project_ID)
       Metadata <- as.data.frame(Metadata)
       Metadata <- Metadata[Metadata$site %in% FilterSite_names,]
     }
-    if(SiteList=="None"){
+    if(Sites=="None"){
       Metadata <- Metadata %>%
         filter(projectid == Project_ID)
       Metadata <- as.data.frame(Metadata)
