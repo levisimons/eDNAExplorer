@@ -152,23 +152,18 @@ tryCatch(
     # Get the number of samples in a project before filtering.
     Metadata_Unfiltered <- Metadata %>% filter(projectid == Project_ID)
     Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
-    #Metadata filtering if sites are selected for furthering filtering.
-    if(Sites!="None"){
-      Metadata_Unfiltered <- Metadata_Unfiltered[Metadata_Unfiltered$site %in% FilterSite_names,]
-    }
     total_Samples <- nrow(Metadata_Unfiltered)
+    #Metadata filtering if sites are selected for furthering filtering.
     if(Sites!="None"){
       Metadata <- Metadata %>%
         filter(projectid == Project_ID)
       Metadata <- as.data.frame(Metadata)
       Metadata <- Metadata[Metadata$site %in% FilterSite_names,]
-      total_Samples <- nrow(Metadata_Unfiltered)
     }
     if(Sites=="None"){
       Metadata <- Metadata %>%
         filter(projectid == Project_ID)
       Metadata <- as.data.frame(Metadata)
-      total_Samples <- nrow(Metadata_Unfiltered)
     }
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
