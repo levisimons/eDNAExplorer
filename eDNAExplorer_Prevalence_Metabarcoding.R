@@ -80,7 +80,7 @@ if (length(args) != 10) {
     # Concatenate into a single string with commas
     FilterSites_shortened <- paste(FilterSites_shortened, collapse = ",")
   }
-  if(SpeciesList=="None"){
+  if(Sites=="None"){
     FilterSites_shortened <- "None"
   }
   
@@ -120,7 +120,8 @@ process_error <- function(e, filename = "error.json") {
 # CountThreshold:numeric Read count threshold for retaining samples
 # FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 # SpeciesList:string Name of csv file containing selected species list.
-# Rscript --vanilla eDNAExplorer_Prevalence_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
+# Sites: Comma-concatenated list of site IDs.
+# Rscript --vanilla eDNAExplorer_Prevalence_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList" "Sites"
 
 # Generate the output filename for cached plots.
 tryCatch(
@@ -161,11 +162,13 @@ tryCatch(
         filter(projectid == Project_ID)
       Metadata <- as.data.frame(Metadata)
       Metadata <- Metadata[Metadata$site %in% FilterSite_names,]
+      total_Samples <- nrow(Metadata_Unfiltered)
     }
     if(Sites=="None"){
       Metadata <- Metadata %>%
         filter(projectid == Project_ID)
       Metadata <- as.data.frame(Metadata)
+      total_Samples <- nrow(Metadata_Unfiltered)
     }
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
