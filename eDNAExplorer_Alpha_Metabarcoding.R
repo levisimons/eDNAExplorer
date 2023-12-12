@@ -342,7 +342,7 @@ tryCatch(
     datasets <- list(datasets = list(results=plotly_json(p, FALSE),metadata=toJSON(SampleDB)))
     
     #Save plot as json object
-    filename <- paste("Alpha_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",AlphaDiversityMetric,"SpeciesList",SelectedSpeciesList,".json",sep="_")
+    filename <- paste("Alpha_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",AlphaDiversityMetric,"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     write(toJSON(datasets),filename)
