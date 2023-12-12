@@ -71,7 +71,7 @@ if (length(args) != 12) {
     sapply(dbListConnections(Database_Driver), dbDisconnect)
     con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
     ProjectSites <- tbl(con, "ProjectSite")
-    ProjectSites <- ProjectSites %>% filter(projectId == Project_ID) %>% select(id,name)
+    ProjectSites <- ProjectSites %>% filter(projectId == sample_ProjectID) %>% select(id,name)
     ProjectSites <- as.data.frame(ProjectSites)
     FilterSites <- ProjectSites[ProjectSites$id %in% SelectedSiteList,]
     #Sort sites alphabetically
