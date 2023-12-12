@@ -35,9 +35,9 @@ bucket <- Sys.getenv("S3_BUCKET")
 home_dir <- Sys.getenv("home_dir")
 ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
 
-if (length(args) != 11) {
-  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, EnvironmentalParameter, BetaDiversity", call. = FALSE)
-} else if (length(args) == 11) {
+if (length(args) != 12) {
+  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, EnvironmentalParameter, BetaDiversity, Sites", call. = FALSE)
+} else if (length(args) == 12) {
   ProjectID <- args[1]
   First_Date <- args[2]
   Last_Date <- args[3]
@@ -49,6 +49,7 @@ if (length(args) != 11) {
   SpeciesList <- args[9]
   EnvironmentalParameter <- args[10]
   BetaDiversity <- args[11]
+  Sites <- args[12]
   
   #Define filters in Phyloseq as global parameters.
   sample_ProjectID <<- as.character(ProjectID)
@@ -63,6 +64,31 @@ if (length(args) != 11) {
   BetaDiversityMetric <<- as.character(BetaDiversity)
   SelectedSpeciesList <<- as.character(SpeciesList)
   
+  if(Sites!="None"){
+    #Get alphabetized site list for a given project.
+    SelectedSiteList <- strsplit(Sites,split=",")[[1]]
+    Database_Driver <- dbDriver("PostgreSQL")
+    sapply(dbListConnections(Database_Driver), dbDisconnect)
+    con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
+    ProjectSites <- tbl(con, "ProjectSite")
+    ProjectSites <- ProjectSites %>% filter(projectId == sample_ProjectID) %>% select(id,name)
+    ProjectSites <- as.data.frame(ProjectSites)
+    FilterSites <- ProjectSites[ProjectSites$id %in% SelectedSiteList,]
+    #Sort sites alphabetically
+    FilterSites <- FilterSites[order(FilterSites$id),]
+    FilterSite_ids <- FilterSites$id
+    #Get site IDs
+    #Get site names corresponding to selected site IDs.
+    FilterSite_names <<- FilterSites$name
+    #Generate the list of alphabetized sites, but only use their last four characters.
+    FilterSites_shortened <- sapply(FilterSite_ids, function(x) substr(x, nchar(x) - 3, nchar(x)))
+    # Concatenate into a single string with commas
+    FilterSites_shortened <<- paste(FilterSites_shortened, collapse = ",")
+  }
+  if(Sites=="None"){
+    FilterSites_shortened <<- "None"
+  }
+  
   CategoricalVariables <- c("site","grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
   ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
   FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
@@ -70,7 +96,7 @@ if (length(args) != 11) {
   TaxonomicNum <<- as.numeric(which(TaxonomicRanks == sample_TaxonomicRank))
   
   #Save plot name.
-  filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,",json",sep="_")
+  filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,",json",sep="_")
   filename <- gsub("_.json",".json",filename)
   filename <- tolower(filename)
 }
@@ -153,26 +179,31 @@ tryCatch(
     Metadata_Unfiltered <- Metadata %>% filter(projectid == sample_ProjectID)
     Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
     total_Samples <- nrow(Metadata_Unfiltered)
-    Metadata <- Metadata %>%
-      filter(projectid == sample_ProjectID) %>%
-      filter(!is.na(!!sym(EnvironmentalVariable)))
-    Metadata <- as.data.frame(Metadata)
+    #Metadata filtering if sites are selected for furthering filtering.
+    if(Sites!="None"){
+      Metadata <- Metadata %>%
+        filter(projectid == sample_ProjectID)
+      Metadata <- as.data.frame(Metadata)
+      Metadata <- Metadata[Metadata$site %in% FilterSite_names,]
+    }
+    if(Sites=="None"){
+      Metadata <- Metadata %>%
+        filter(projectid == sample_ProjectID)
+      Metadata <- as.data.frame(Metadata)
+    }
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date)
-    if(all(is.na(Metadata[,EnvironmentalVariable]))){
-      stop("There is no data available for the environmental variable selected in the 'Variable' dropdown above in the area(s) where this project is located.")
-    }
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
     }
     Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
+    
     #Change values of selected variable
     if(EnvironmentalVariable %in% unique(categories$Environmental_Variable)){
       colnames(Metadata)[colnames(Metadata) == EnvironmentalVariable] <- 'value'
       Metadata <- dplyr::left_join(Metadata,categories[categories$Environmental_Variable==EnvironmentalVariable,])
       colnames(Metadata)[colnames(Metadata) == 'description'] <- EnvironmentalVariable
     }
-    
     
     #Create sample metadata matrix
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
@@ -283,7 +314,7 @@ tryCatch(
     datasets <- list(datasets = list(results=gsub(EnvironmentalVariable,new_legend,plotly_json(p, FALSE)),metadata=toJSON(SampleDB)))
     
     #Save plot as json object
-    filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,",json",sep="_")
+    filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,",json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     write(toJSON(datasets),filename)
