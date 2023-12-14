@@ -33,9 +33,9 @@ gbif_dir <- Sys.getenv("GBIF_HOME")
 home_dir <- Sys.getenv("home_dir")
 ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
 
-if (length(args) != 10) {
-  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, Geographic_Scale.", call. = FALSE)
-} else if (length(args) == 10) {
+if (length(args) != 11) {
+  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, Geographic_Scale, Sites.", call. = FALSE)
+} else if (length(args) == 11) {
   ProjectID <- args[1]
   First_Date <- args[2]
   Last_Date <- args[3]
@@ -46,6 +46,7 @@ if (length(args) != 10) {
   FilterThreshold <- args[8]
   SpeciesList <- args[9]
   Geographic_Scale <- args[10]
+  Sites <- args[11]
   
   CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
   ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
@@ -62,7 +63,32 @@ if (length(args) != 10) {
   FilterThreshold <- as.numeric(FilterThreshold)
   SelectedSpeciesList <- as.character(SpeciesList)
   
-  filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,".json",sep="_")
+  if(Sites!="None"){
+    #Get alphabetized site list for a given project.
+    SelectedSiteList <- strsplit(Sites,split=",")[[1]]
+    Database_Driver <- dbDriver("PostgreSQL")
+    sapply(dbListConnections(Database_Driver), dbDisconnect)
+    con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
+    ProjectSites <- tbl(con, "ProjectSite")
+    ProjectSites <- ProjectSites %>% filter(projectId == Project_ID) %>% select(id,name)
+    ProjectSites <- as.data.frame(ProjectSites)
+    FilterSites <- ProjectSites[ProjectSites$id %in% SelectedSiteList,]
+    #Sort sites alphabetically
+    FilterSites <- FilterSites[order(FilterSites$id),]
+    FilterSite_ids <- FilterSites$id
+    #Get site IDs
+    #Get site names corresponding to selected site IDs.
+    FilterSite_names <- FilterSites$name
+    #Generate the list of alphabetized sites, but only use their last four characters.
+    FilterSites_shortened <- sapply(FilterSite_ids, function(x) substr(x, nchar(x) - 3, nchar(x)))
+    # Concatenate into a single string with commas
+    FilterSites_shortened <- paste(FilterSites_shortened, collapse = ",")
+  }
+  if(Sites=="None"){
+    FilterSites_shortened <- "None"
+  }
+  
+  filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,"Sites",FilterSites_shortened,".json",sep="_")
   filename <- gsub("_.json",".json",filename)
   filename <- tolower(filename)
 }
@@ -130,9 +156,18 @@ tryCatch(
     Metadata_Unfiltered <- Metadata %>% filter(projectid == Project_ID)
     Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
     total_Samples <- nrow(Metadata_Unfiltered)
-    Metadata <- Metadata %>%
-      filter(projectid == Project_ID)
-    Metadata <- as.data.frame(Metadata)
+    #Metadata filtering if sites are selected for furthering filtering.
+    if(Sites!="None"){
+      Metadata <- Metadata %>%
+        filter(projectid == Project_ID)
+      Metadata <- as.data.frame(Metadata)
+      Metadata <- Metadata[Metadata$site %in% FilterSite_names,]
+    }
+    if(Sites=="None"){
+      Metadata <- Metadata %>%
+        filter(projectid == Project_ID)
+      Metadata <- as.data.frame(Metadata)
+    }
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
