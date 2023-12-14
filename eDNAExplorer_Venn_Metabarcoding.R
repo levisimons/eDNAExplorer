@@ -332,7 +332,7 @@ tryCatch(
     SampleDB$totalSamples <- total_Samples
     SampleDB$filteredSamples <- num_filteredSamples
     datasets <- list(datasets = list(eDNA=Tronko_Taxa[,1],Both=Both[,1],GBIF=Taxa_GBIF[,1],metadata=SampleDB))
-    filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,".json",sep="_")
+    filename <- paste("Venn_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"GeographicScale",Geographic_Scale,"Sites",FilterSites_shortened,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     write(toJSON(datasets),filename)
