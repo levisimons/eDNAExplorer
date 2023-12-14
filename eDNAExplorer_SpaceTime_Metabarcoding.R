@@ -30,9 +30,9 @@ bucket <- Sys.getenv("S3_BUCKET")
 home_dir <- Sys.getenv("home_dir")
 ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
 
-if (length(args) != 9) {
-  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList.", call. = FALSE)
-} else if (length(args) == 9) {
+if (length(args) != 10) {
+  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, Sites.", call. = FALSE)
+} else if (length(args) == 10) {
   ProjectID <- args[1]
   First_Date <- args[2]
   Last_Date <- args[3]
@@ -42,6 +42,7 @@ if (length(args) != 9) {
   CountThreshold <- args[7]
   FilterThreshold <- args[8]
   SpeciesList <- args[9]
+  Sites <- args[10]
   
   CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
   ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
@@ -56,6 +57,31 @@ if (length(args) != 9) {
   FilterThreshold <- as.numeric(FilterThreshold)
   SelectedSpeciesList <- as.character(SpeciesList)
   Project_ID <- as.character(ProjectID)
+  
+  if(Sites!="None"){
+    #Get alphabetized site list for a given project.
+    SelectedSiteList <- strsplit(Sites,split=",")[[1]]
+    Database_Driver <- dbDriver("PostgreSQL")
+    sapply(dbListConnections(Database_Driver), dbDisconnect)
+    con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
+    ProjectSites <- tbl(con, "ProjectSite")
+    ProjectSites <- ProjectSites %>% filter(projectId == Project_ID) %>% select(id,name)
+    ProjectSites <- as.data.frame(ProjectSites)
+    FilterSites <- ProjectSites[ProjectSites$id %in% SelectedSiteList,]
+    #Sort sites alphabetically
+    FilterSites <- FilterSites[order(FilterSites$id),]
+    FilterSite_ids <- FilterSites$id
+    #Get site IDs
+    #Get site names corresponding to selected site IDs.
+    FilterSite_names <- FilterSites$name
+    #Generate the list of alphabetized sites, but only use their last four characters.
+    FilterSites_shortened <- sapply(FilterSite_ids, function(x) substr(x, nchar(x) - 3, nchar(x)))
+    # Concatenate into a single string with commas
+    FilterSites_shortened <- paste(FilterSites_shortened, collapse = ",")
+  }
+  if(Sites=="None"){
+    FilterSites_shortened <- "None"
+  }
 }
 
 # Write error output to our json file.
@@ -90,13 +116,14 @@ process_error <- function(e, filename = "error.json") {
 # CountThreshold:numeric Read count threshold for retaining samples
 # FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 # SpeciesList:string Name of csv file containing selected species list.
-# Rscript --vanilla eDNAExplorer_Spacetime_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
+# Sites: Comma-concatenated list of site IDs.
+# Rscript --vanilla eDNAExplorer_Spacetime_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList" "Sites"
 
 # Generate the output filename for cached plots.
 tryCatch(
   {
     #Generate the output filename for cached plots.
-    filename <- paste("PresenceByTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
+    filename <- paste("PresenceByTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
@@ -106,7 +133,7 @@ tryCatch(
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
-    filename <- paste("PresenceBySite_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
+    filename <- paste("PresenceBySite_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
@@ -116,7 +143,7 @@ tryCatch(
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
-    filename <- paste("PresenceBySample_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
+    filename <- paste("PresenceBySample_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
@@ -126,7 +153,7 @@ tryCatch(
     system(paste("rm ",filename,sep=""))
     
     # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
-    filename <- paste("PresenceBySiteAndTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
+    filename <- paste("PresenceBySiteAndTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
@@ -136,7 +163,7 @@ tryCatch(
     system(paste("rm ",filename,sep=""))
     
     # Output a blank filtered taxonomy table as a default.  This gets overwritten is actual material exists.
-    filename <- paste("FilteredTaxonomy_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".csv",sep="_")
+    filename <- paste("FilteredTaxonomy_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,".csv",sep="_")
     filename <- gsub("_.csv",".csv",filename)
     filename <- tolower(filename)
     write.table(data.frame(error=c("No results"),message=c("Filter too stringent")),filename,quote=FALSE,sep=",",row.names = FALSE)
@@ -162,9 +189,18 @@ tryCatch(
     Metadata_Unfiltered <- Metadata %>% filter(projectid == Project_ID)
     Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
     total_Samples <- nrow(Metadata_Unfiltered)
-    Metadata <- Metadata %>%
-      filter(projectid == Project_ID)
-    Metadata <- as.data.frame(Metadata)
+    #Metadata filtering if sites are selected for furthering filtering.
+    if(Sites!="None"){
+      Metadata <- Metadata %>%
+        filter(projectid == Project_ID)
+      Metadata <- as.data.frame(Metadata)
+      Metadata <- Metadata[Metadata$site %in% FilterSite_names,]
+    }
+    if(Sites=="None"){
+      Metadata <- Metadata %>%
+        filter(projectid == Project_ID)
+      Metadata <- as.data.frame(Metadata)
+    }
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
@@ -321,7 +357,7 @@ tryCatch(
     ProjectDB_byTime <- tidyr::pivot_wider(ProjectDB_byTime[c("Latin_Name","Common_Name","Image_URL","sample_date","freq")], names_from = sample_date, values_from = freq, values_fill = 0)
     ProjectDB_byTime <- as.data.frame(ProjectDB_byTime)
     #Specify filname
-    filename <- paste("PresenceByTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
+    filename <- paste("PresenceByTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     # Convert data set to JSON object.
@@ -392,7 +428,7 @@ tryCatch(
       # Append the JSON object to the list
       json_list[[i]] <- json_obj
     }
-    filename <- paste("PresenceBySite_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
+    filename <- paste("PresenceBySite_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     datasets <- list(datasets = list(results = json_list, metadata = SampleDB))
@@ -427,7 +463,7 @@ tryCatch(
     #Re-insert taxonomic rank.
     colnames(ProjectDB_bySample)[which(names(ProjectDB_bySample) == "taxa")] <- "Latin_Name"
     #Specify filename
-    filename <- paste("PresenceBySample_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
+    filename <- paste("PresenceBySample_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     # Convert data set to JSON object.
@@ -477,7 +513,7 @@ tryCatch(
     # Convert to a wide data frame.
     ProjectDB_bySiteTime <- tidyr::pivot_wider(ProjectDB_bySiteTime[,c("site","Latin_Name","freq","sample_date","Common_Name","Image_URL")], names_from = site, values_from = freq, values_fill = 0)
     ProjectDB_bySiteTime <- as.data.frame(ProjectDB_bySiteTime)
-    filename <- paste("PresenceBySiteAndTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,".json",sep="_")
+    filename <- paste("PresenceBySiteAndTime_Metabarcoding_FirstDate",First_Date,"LastDate",Last_Date,"Marker",Marker,"Rank",TaxonomicRank,"Mismatch",Num_Mismatch,"CountThreshold",CountThreshold,"AbundanceThreshold",format(FilterThreshold,scientific=F),"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,".json",sep="_")
     filename <- gsub("_.json",".json",filename)
     filename <- tolower(filename)
     # Convert data set to JSON object.
