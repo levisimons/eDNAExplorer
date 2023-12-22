@@ -29,9 +29,9 @@ bucket <- Sys.getenv("S3_BUCKET")
 home_dir <- Sys.getenv("home_dir")
 ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
 
-if (length(args) != 9) {
-  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList.", call. = FALSE)
-} else if (length(args) == 9) {
+if (length(args) != 10) {
+  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, Sites.", call. = FALSE)
+} else if (length(args) == 10) {
   ProjectID <- args[1]
   First_Date <- args[2]
   Last_Date <- args[3]
@@ -41,6 +41,7 @@ if (length(args) != 9) {
   CountThreshold <- args[7]
   FilterThreshold <- args[8]
   SpeciesList <- args[9]
+  Sites <- args[10]
   
   CategoricalVariables <- c("site","grtgroup", "biome_type", "iucn_cat", "eco_name", "hybas_id")
   ContinuousVariables <- c("bio01", "bio12", "ghm", "elevation", "ndvi", "average_radiance")
@@ -58,7 +59,32 @@ if (length(args) != 9) {
   FilterThreshold <- as.numeric(FilterThreshold)
   SelectedSpeciesList <- as.character(SpeciesList)
   
-  filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList,".json", sep = "_")
+  if(Sites!="None"){
+    #Get alphabetized site list for a given project.
+    SelectedSiteList <- strsplit(Sites,split=",")[[1]]
+    Database_Driver <- dbDriver("PostgreSQL")
+    sapply(dbListConnections(Database_Driver), dbDisconnect)
+    con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
+    ProjectSites <- tbl(con, "ProjectSite")
+    ProjectSites <- ProjectSites %>% filter(projectId == Project_ID) %>% select(id,name)
+    ProjectSites <- as.data.frame(ProjectSites)
+    FilterSites <- ProjectSites[ProjectSites$id %in% SelectedSiteList,]
+    #Sort sites alphabetically
+    FilterSites <- FilterSites[order(FilterSites$id),]
+    FilterSite_ids <- FilterSites$id
+    #Get site IDs
+    #Get site names corresponding to selected site IDs.
+    FilterSite_names <- FilterSites$name
+    #Generate the list of alphabetized sites, but only use their last four characters.
+    FilterSites_shortened <- sapply(FilterSite_ids, function(x) substr(x, nchar(x) - 3, nchar(x)))
+    # Concatenate into a single string with commas
+    FilterSites_shortened <- paste(FilterSites_shortened, collapse = ",")
+  }
+  if(Sites=="None"){
+    FilterSites_shortened <- "None"
+  }
+  
+  filename <- paste("Prevalence_Metabarcoding_FirstDate", First_Date, "LastDate", Last_Date, "Marker", Marker, "Rank", TaxonomicRank, "Mismatch", Num_Mismatch, "CountThreshold", CountThreshold, "AbundanceThreshold", format(FilterThreshold, scientific = F), "SpeciesList", SelectedSpeciesList,"Sites",FilterSites_shortened,".json", sep = "_")
   filename <- gsub("_.json",".json",filename)
   filename <- tolower(filename)
 }
@@ -79,7 +105,7 @@ process_error <- function(e, filename = "error.json") {
   } else {
     paste("s3://",bucket,"/projects/", ProjectID, "/plots/error_", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
   }
-
+  
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
   system(paste("rm ",filename,sep=""))
   stop(error_message)
@@ -94,7 +120,8 @@ process_error <- function(e, filename = "error.json") {
 # CountThreshold:numeric Read count threshold for retaining samples
 # FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
 # SpeciesList:string Name of csv file containing selected species list.
-# Rscript --vanilla eDNAExplorer_Prevalence_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList"
+# Sites: Comma-concatenated list of site IDs.
+# Rscript --vanilla eDNAExplorer_Prevalence_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList" "Sites"
 
 # Generate the output filename for cached plots.
 tryCatch(
@@ -113,7 +140,7 @@ tryCatch(
     con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
     
     # Read in species list
-    if (SelectedSpeciesList != "None") {
+    if(SelectedSpeciesList != "None") {
       SpeciesList_df <- tbl(con, "SpeciesListItem")
       SpeciesList_df <- SpeciesList_df %>% filter(species_list == SelectedSpeciesList)
       SpeciesList_df <- as.data.frame(SpeciesList_df)
@@ -126,9 +153,18 @@ tryCatch(
     Metadata_Unfiltered <- Metadata %>% filter(projectid == Project_ID)
     Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
     total_Samples <- nrow(Metadata_Unfiltered)
-    Metadata <- Metadata %>%
-      filter(projectid == Project_ID)
-    Metadata <- as.data.frame(Metadata)
+    #Metadata filtering if sites are selected for furthering filtering.
+    if(Sites!="None"){
+      Metadata <- Metadata %>%
+        filter(projectid == Project_ID)
+      Metadata <- as.data.frame(Metadata)
+      Metadata <- Metadata[Metadata$site %in% FilterSite_names,]
+    }
+    if(Sites=="None"){
+      Metadata <- Metadata %>%
+        filter(projectid == Project_ID)
+      Metadata <- as.data.frame(Metadata)
+    }
     Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
     Metadata <- Metadata %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
     if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
