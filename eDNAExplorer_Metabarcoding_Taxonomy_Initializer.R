@@ -132,11 +132,11 @@ tryCatch(
     for(Primer in Primers){
       #Read in Tronko-assign output files.  Standardize sample IDs within them.
       TronkoBucket <- system(paste("aws s3 ls s3://",bucket,"/projects/",ProjectID," --recursive --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
+      TronkoBucket <- TronkoBucket[grepl(paste("projects",ProjectID,"assign",Primer,sep="/"),TronkoBucket)]
+      TronkoBucket <- TronkoBucket[grepl("*.txt$",TronkoBucket)]
       TronkoBucket <- read.table(text = paste(TronkoBucket,sep = ""),header = FALSE)
       colnames(TronkoBucket) <- c("Date", "Time", "Size","Filename")
       TronkoFiles <- unique(TronkoBucket$Filename)
-      TronkoFiles <- TronkoFiles[grepl(paste("projects",ProjectID,"assign",Primer,sep="/"),TronkoFiles)]
-      TronkoFiles <- TronkoFiles[grepl("*.txt$",TronkoFiles)]
       if(length(TronkoFiles)>0){
         TronkoInputs <- list()
         i=1
@@ -155,10 +155,13 @@ tryCatch(
         TronkoInputs <- rbindlist(TronkoInputs, use.names=TRUE, fill=TRUE)
         TronkoInputs$Taxonomic_Path <- gsub(","," ",TronkoInputs$Taxonomic_Path)
         #Get ASV to sampleID information
+        TronkoBucket <- system(paste("aws s3 ls s3://",bucket,"/projects/",ProjectID," --recursive --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
+        TronkoBucket <- TronkoBucket[grepl(paste("projects",ProjectID,"assign",Primer,sep="/"),TronkoBucket)]
+        TronkoBucket <- TronkoBucket[grepl("*.asv$",TronkoBucket)]
+        TronkoBucket <- TronkoBucket[!grepl("*-paired_R.asv$",TronkoBucket)]
+        TronkoBucket <- read.table(text = paste(TronkoBucket,sep = ""),header = FALSE)
+        colnames(TronkoBucket) <- c("Date", "Time", "Size","Filename")
         TronkoASVs <- unique(TronkoBucket$Filename)
-        TronkoASVs <- TronkoASVs[grepl(paste("projects",ProjectID,"assign",Primer,sep="/"),TronkoASVs)]
-        TronkoASVs <- TronkoASVs[grepl("*.asv$",TronkoASVs)]
-        TronkoASVs <- TronkoASVs[!grepl("*-paired_R.asv$",TronkoASVs)]
         if(length(TronkoASVs)>0){
           ASVInputs <- list()
           m=1
