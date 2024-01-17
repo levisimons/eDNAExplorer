@@ -123,9 +123,20 @@ tryCatch(
     #Assign weight value for species, genera, and families.
     Taxa_Nation <- Taxa_Nation %>% dplyr:: mutate(Ecoregion_GBIFWeight = dplyr::case_when(taxonrank=="SPECIES" ~ 4, taxonrank=="SUBSPECIES" ~ 4, taxonrank=="GENUS" ~ 2, taxonrank=="FAMILY" ~ 1, !(taxonrank %in% c("SPECIES","GENUS","FAMILY"))~0))
     
-    #Get primers
+    #Get primers from metadata
     Markers <- grep("^marker_[[:digit:]]$",colnames(Metadata),value=T)
     Primers <- na.omit(unique(unlist(Metadata[,Markers])))
+    #Check for primers which have Tronko-assign data.
+    Primers_retain <- c()
+    for(Primer in Primers){
+      TronkoBucket <- system(paste("aws s3 ls s3://",bucket,"/projects/",ProjectID," --recursive --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
+      TronkoBucket <- TronkoBucket[grepl(paste("projects",ProjectID,"assign",Primer,sep="/"),TronkoBucket)]
+      TronkoBucket <- TronkoBucket[grepl("*.txt$",TronkoBucket)]
+      if(length(TronkoBucket)>0){
+        Primers_retain <- c(Primers_retain,Primer)
+      }
+    }
+    Primers <- Primers_retain
     j=1
     TaxaCount <- list()
     #Loop over primers to add Tronko-assign data to database, along with associate Phylopic metadata.
