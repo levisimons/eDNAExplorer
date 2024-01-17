@@ -102,6 +102,17 @@ tryCatch(
       stop("Tronko-assign output files needed", call.=FALSE)
     }
     
+    #Check for primers which have Tronko-assign data.
+    Primers_retain <- c()
+    for(Primer in Primers){
+      TronkoBucket <- system(paste("aws s3 ls s3://",bucket,"/tronko_output/",ProjectID," --recursive --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
+      TronkoBucket <- TronkoBucket[grepl(paste(Primer,".csv$",sep=""),TronkoBucket)]
+      if(length(TronkoBucket)>0){
+        Primers_retain <- c(Primers_retain,Primer)
+      }
+    }
+    Primers <- Primers_retain
+    
     #Loop over Tronko-assign data to database of observations
     TronkoObservations <- c()
     i=1
