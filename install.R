@@ -23,3 +23,8 @@ install_and_verify_package("RPostgreSQL")
 install_and_verify_package("DBI")
 install_and_verify_package("anytime")
 install_and_verify_package("digest")
+install.packages('duckdb', repos=c('https://duckdb.r-universe.dev', 'https://cloud.r-project.org'))
+install.packages('duckdbfs', repos=c('https://duckdb.r-universe.dev', 'https://cloud.r-project.org'))
+devtools::install_github("ropensci/gbifdb")
+devtools::install_github("cboettig/minioclient")
+
