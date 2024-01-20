@@ -45,14 +45,11 @@ RUN wget -P /tmp/ "https://repo.anaconda.com/miniconda/Miniconda3-py38_4.12.0-Li
     bash "/tmp/Miniconda3-py38_4.12.0-Linux-x86_64.sh" -b -p /usr/local/miniconda
 
 COPY env.yml /tmp/env.yml
-COPY env_metadata.yml /tmp/env_metadata.yml
 ENV PATH="/usr/local/miniconda/bin:$PATH"
 
 # Create GBIF_env and metadata
 RUN conda env create -f /tmp/env.yml -n GBIF_env && \
-    conda env create -f /tmp/env_metadata.yml -n metadata && \
-    conda init && \
-    . /root/.bashrc
+    conda init
 
 # Copy env.yaml and install.R to the image
 COPY install.R /tmp/install.R
@@ -63,10 +60,7 @@ RUN conda run -n GBIF_env /bin/bash -c "Rscript /tmp/install.R"
 RUN conda run -n GBIF_env /bin/bash -c "Rscript /tmp/install_biocmanager.R"
 
 # Set the working directory
-WORKDIR /project
+WORKDIR /home/ubuntu/eDNAExplorer
 
-# Make port 8000 available to the world outside this container
-EXPOSE 8000
-
-# Activate the environment, and run the application
-CMD ["bash", "-c", "source activate metadata && exec gunicorn --workers 3 --bind 0.0.0.0:8000 wsgi:app"]
+# Activate the environment
+CMD ["./scripts/entrypoint.sh"]
