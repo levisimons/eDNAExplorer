@@ -14,7 +14,7 @@ RUN apt-get install -y \
   unzip \
   libfontconfig1-dev \
   libgdal-dev \
-  libcurl4-openssl-dev \
+  libcurl4-gnutls-dev \
   libssl-dev \
   libxml2-dev \
   libudunits2-dev \
@@ -27,8 +27,6 @@ RUN apt-get install -y \
   libsqlite3-dev \
   libboost-dev \
   libgeos-dev \
-  postgresql \ 
-  postgresql-contrib \
   software-properties-common \
   dirmngr \
   awscli \
@@ -47,8 +45,8 @@ RUN wget -P /tmp/ "https://repo.anaconda.com/miniconda/Miniconda3-py38_4.12.0-Li
 COPY env.yml /tmp/env.yml
 ENV PATH="/usr/local/miniconda/bin:$PATH"
 
-# Create GBIF_env and metadata
-RUN conda env create -f /tmp/env.yml -n GBIF_env && \
+# Create reports env
+RUN conda env create -f /tmp/env.yml -n reports && \
     conda init
 
 # Copy env.yaml and install.R to the image
@@ -56,11 +54,11 @@ COPY install.R /tmp/install.R
 COPY install_biocmanager.R /tmp/install_biocmanager.R
 
 # Install R packages such as rhdf5 and Phyloseq
-RUN conda run -n GBIF_env /bin/bash -c "Rscript /tmp/install.R"
-RUN conda run -n GBIF_env /bin/bash -c "Rscript /tmp/install_biocmanager.R"
+RUN conda run -n reports /bin/bash -c "Rscript /tmp/install.R"
+RUN conda run -n reports /bin/bash -c "Rscript /tmp/install_biocmanager.R"
 
 # Set the working directory
 WORKDIR /home/ubuntu/eDNAExplorer
 
 # Activate the environment
-CMD ["./scripts/entrypoint.sh"]
+CMD ["/home/ubuntu/eDNAExplorer/scripts/entrypoint.sh"]
