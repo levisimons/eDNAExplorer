@@ -1,5 +1,5 @@
 #!/bin/bash
-source /opt/conda/etc/profile.d/conda.sh
-conda activate GBIF_env
+source /usr/local/miniconda/etc/profile.d/conda.sh
+conda activate reports
 echo "Executing: $@"
 exec "$@"
