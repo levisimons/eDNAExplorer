@@ -45,11 +45,16 @@ RUN wget -P /tmp/ "https://repo.anaconda.com/miniconda/Miniconda3-py38_4.12.0-Li
 COPY env.yml /tmp/env.yml
 ENV PATH="/usr/local/miniconda/bin:$PATH"
 
+# Copy git files
+COPY . /home/ubuntu/eDNAExplorer/
+
 # Create reports env
 RUN conda env create -f /tmp/env.yml -n reports && \
     conda init
 
-# Copy env.yaml and install.R to the image
+RUN echo "source activate reports" >> /root/.bashrc
+
+# Copy R dependencies file
 COPY install.R /tmp/install.R
 COPY install_biocmanager.R /tmp/install_biocmanager.R
 
@@ -59,6 +64,3 @@ RUN conda run -n reports /bin/bash -c "Rscript /tmp/install_biocmanager.R"
 
 # Set the working directory
 WORKDIR /home/ubuntu/eDNAExplorer
-
-# Activate the environment
-CMD ["/home/ubuntu/eDNAExplorer/scripts/entrypoint.sh"]
