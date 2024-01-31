@@ -179,6 +179,12 @@ tryCatch(
     if(nrow(tronko_db) == 0){
       stop("Error: Filters are too stringent. Cannot proceed.")
     }
+    
+    # Update report with file key.
+    sql_query <- sprintf(
+      "UPDATE \"Report\" SET \"fileKey\" = '%s' WHERE \"id\" = '%s'",
+      file_key, report_id
+    )
     print(paste("Updating report", report_id, "with file key", file_key, sep = " "))
     dbExecute(con, sql_query)
     updateReport(report_id, "COMPLETED", con)
