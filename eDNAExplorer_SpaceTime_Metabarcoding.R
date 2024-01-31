@@ -239,7 +239,7 @@ tryCatch(
     
     # Add the file key to the named list with a label
     file_key = paste("projects/",project_id,"/plots/",output_filename,sep="")
-    labeled_file_keys[["presence_by_site_and_time"]] <- file_key
+    labeled_file_keys[["presence_by_time"]] <- file_key
     system(paste("aws s3 cp ",output_filename," s3://",bucket,"/",file_key," --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
     system(paste("rm ",output_filename,sep=""))
 
