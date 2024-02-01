@@ -24,7 +24,7 @@ require(plotly)
 require(jsonlite)
 
 # Fetch project ID early so we can use it for error output when possible.
-ProjectID <- args[1]
+project_id <- args[1]
 
 #Establish database credentials.
 readRenviron(".env")
@@ -50,10 +50,10 @@ process_error <- function(e, filename = "error.json") {
   new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
   dest_filename <- sub("\\.json$", ".build", filename)
   
-  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
+  s3_path <- if (is.null(project_id) || project_id == "") {
     paste("s3://",bucket,"/errors/qpcr_prevalence/", new_filename, sep = "")
   } else {
-    paste("s3://",bucket,"/projects/", ProjectID, "/plots/error+", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
+    paste("s3://",bucket,"/projects/", project_id, "/plots/error+", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
   }
   
   system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
@@ -62,35 +62,35 @@ process_error <- function(e, filename = "error.json") {
 }
 
 # Get filtering parameters.
-# ProjectID:string
-# First_Date:string YYYY-MM-DD
-# Last_Date:string YYYY-MM-DD
-# SpeciesList:string Name of csv file containing selected species list.
-# Rscript --vanilla eDNAExplorer_Prevalence_qPCR.R "ProjectID" "First_Date" "Last_Date" "Marker" "SpeciesList"
+# project_id:string
+# first_date:string YYYY-MM-DD
+# last_date:string YYYY-MM-DD
+# species_list:string Name of csv file containing selected species list.
+# Rscript --vanilla eDNAExplorer_Prevalence_qPCR.R "project_id" "first_date" "last_date" "marker" "species_list"
 
 tryCatch(
   {
     if (length(args) != 4) {
-      stop("Need the following inputs: ProjectID, First_Date, Last_Date, SpeciesList.", call. = FALSE)
+      stop("Need the following inputs: project_id, first_date, last_date, species_list.", call. = FALSE)
     } else if (length(args) == 4) {
-      ProjectID <- args[1]
-      First_Date <- args[2]
-      Last_Date <- args[3]
-      SpeciesList <- args[4]
+      project_id <- args[1]
+      first_date <- args[2]
+      last_date <- args[3]
+      species_list <- args[4]
       
-      First_Date <- lubridate::ymd(First_Date)
-      Last_Date <- lubridate::ymd(Last_Date)
-      SelectedSpeciesList <- as.character(SpeciesList)
-      ProjectID <- as.character(ProjectID)
+      first_date <- lubridate::ymd(first_date)
+      last_date <- lubridate::ymd(last_date)
+      selected_species_list <- as.character(species_list)
+      project_id <- as.character(project_id)
       
-      CategoricalVariables <- c("site","grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
-      ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
+      categorical_variables <- c("site","grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
+      continuous_variables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
       FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
-      TaxonomicRanks <- c("superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species")
-      TaxonomicKeyRanks <- c("kingdomKey","phylumKey","classKey","orderKey","familyKey","genusKey","speciesKey")
+      taxonomic_ranks <- c("superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+      taxonomic_key_ranks <- c("kingdomKey","phylumKey","classKey","orderKey","familyKey","genusKey","speciesKey")
       
       #Save plot name.
-      filename <- paste("Prevalence_qPCR_FirstDate",First_Date,"LastDate",Last_Date,"SpeciesList",SelectedSpeciesList,".json",sep="_")
+      filename <- paste("Prevalence_qPCR_FirstDate",first_date,"LastDate",last_date,"species_list",selected_species_list,".json",sep="_")
       filename <- gsub("_.json",".json",filename)
       filename <- tolower(filename)
     }
@@ -108,7 +108,7 @@ tryCatch(
     data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
     write(toJSON(data_to_write), filename)
     dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",ProjectID,"/plots/",dest_filename," --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",project_id,"/plots/",dest_filename," --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
     # Establish sql connection
@@ -117,27 +117,27 @@ tryCatch(
     con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
     
     # Read in species list
-    if (SelectedSpeciesList != "None") {
+    if (selected_species_list != "None") {
       SpeciesList_df <- tbl(con, "SpeciesListItem")
-      SpeciesList_df <- SpeciesList_df %>% filter(species_list == SelectedSpeciesList)
+      SpeciesList_df <- SpeciesList_df %>% filter(species_list == selected_species_list)
       SpeciesList_df <- as.data.frame(SpeciesList_df)
     }
     
     #Read in qPCR data and filter it.
     qPCR_input <- tbl(con,"QPCRSample_test")
-    Keep_Vars <- c(CategoricalVariables, ContinuousVariables, FieldVars)[c(CategoricalVariables, ContinuousVariables, FieldVars) %in% dbListFields(con, "QPCRSample_test")]
+    Keep_Vars <- c(categorical_variables, continuous_variables, FieldVars)[c(categorical_variables, continuous_variables, FieldVars) %in% dbListFields(con, "QPCRSample_test")]
     # Get the number of samples in a project before filtering.
-    qPCR_file <- paste("s3://",bucket,"/projects/",ProjectID,"/QPCR.csv",sep="")
+    qPCR_file <- paste("s3://",bucket,"/projects/",project_id,"/QPCR.csv",sep="")
     total_Samples <- as.numeric(system(paste("aws s3 cp ",qPCR_file," --endpoint-url ",ENDPOINT_URL," - | wc -l",sep=""),intern=T))-1
     #Filter samples
     qPCR_input <- qPCR_input %>%
-      filter(projectid == ProjectID) %>%
+      filter(projectid == project_id) %>%
       filter(!is.na(latitude) & !is.na(longitude))
     qPCR_input <- as.data.frame(qPCR_input)
     qPCR_input$sample_date <- lubridate::ymd(qPCR_input$sample_date)
-    qPCR_input <- qPCR_input %>% filter(sample_date >= First_Date & sample_date <= Last_Date)
+    qPCR_input <- qPCR_input %>% filter(sample_date >= first_date & sample_date <= last_date)
     #Filter results by species list.
-    if (SelectedSpeciesList != "None") {
+    if (selected_species_list != "None") {
       qPCR_input <- qPCR_input %>% filter(target_organism %in% SpeciesList_df$name)
     }
     if(nrow(qPCR_input) == 0 || ncol(qPCR_input) == 0) {
@@ -148,34 +148,34 @@ tryCatch(
     # Read in Taxonomy output and filter it.
     TaxonomyInput <- tbl(con, "Taxonomy")
     # Get taxonomic rank
-    TaxonomicRank <- tolower(unique(na.omit(qPCR_input$target_taxonomic_rank_of_organism)))
-    TaxonomicNum <- which(TaxonomicRanks == TaxonomicRank)
+    taxonomic_rank <- tolower(unique(na.omit(qPCR_input$target_taxonomic_rank_of_organism)))
+    taxonomic_num <- which(taxonomic_ranks == taxonomic_rank)
     if (nrow(qPCR_input) > 0) {
       TaxaList <- na.omit(unique(qPCR_input$target_organism))
     }
     if (nrow(qPCR_input) == 0) {
       TaxaList <- c()
     }
-    if (TaxonomicRank != "kingdom") {
+    if (taxonomic_rank != "kingdom") {
       TaxonomyInput <- TaxonomyInput %>%
-        filter(rank==TaxonomicRank) %>%
-        filter(!!sym(TaxonomicRank) %in% TaxaList) %>%
-        select(TaxonomicRanks[2:TaxonomicNum],TaxonomicKeyRanks,Common_Name,Image_URL)
+        filter(rank==taxonomic_rank) %>%
+        filter(!!sym(taxonomic_rank) %in% TaxaList) %>%
+        select(taxonomic_ranks[2:taxonomic_num],taxonomic_key_ranks,Common_Name,Image_URL)
       TaxonomyDB <- as.data.frame(TaxonomyInput)
       #Figure out which taxonomy version is more complete.
-      TaxonomyDB$rankCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicRanks]))
-      TaxonomyDB$rankKeyCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% TaxonomicKeyRanks]))
+      TaxonomyDB$rankCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% taxonomic_ranks]))
+      TaxonomyDB$rankKeyCount <- rowSums(!is.na(TaxonomyDB[,colnames(TaxonomyDB) %in% taxonomic_key_ranks]))
       TaxonomyDB <- TaxonomyDB %>%
-        group_by(!!sym(TaxonomicRank)) %>%
+        group_by(!!sym(taxonomic_rank)) %>%
         slice_max(order_by = rankCount, n = 1) %>%
         ungroup()
       TaxonomyDB <- TaxonomyDB %>%
-        group_by(!!sym(TaxonomicRank)) %>%
+        group_by(!!sym(taxonomic_rank)) %>%
         slice_max(order_by = rankKeyCount, n = 1) %>%
         ungroup()
       #Figure out which common_name is most common per taxon.
       TaxonomyDB <- TaxonomyDB %>%
-        group_by(!!sym(TaxonomicRank)) %>%
+        group_by(!!sym(taxonomic_rank)) %>%
         mutate(Most_Common_Name = ifelse(all(is.na(Common_Name)), NA, names(which.max(table(Common_Name[!is.na(Common_Name)]))))) %>%
         ungroup()
       TaxonomyDB$Common_Name <- TaxonomyDB$Most_Common_Name
@@ -185,7 +185,7 @@ tryCatch(
       TaxonomyDB$rankCount <- NULL
       TaxonomyDB <- TaxonomyDB[!duplicated(TaxonomyDB),]
     }
-    if (TaxonomicRank == "kingdom") {
+    if (taxonomic_rank == "kingdom") {
       TaxonomyDB <- data.frame(
         kingdom = c("Fungi", "Plantae", "Animalia", "Bacteria", "Archaea", "Protista", "Monera", "Chromista"),
         Image_URL = c(
@@ -207,13 +207,13 @@ tryCatch(
         dplyr::summarise(per = n_distinct(sample_id)/n_distinct(qPCR_input$sample_id))
       qPCR_input <- as.data.frame(qPCR_input)
       #Merge in taxonomy data.
-      colnames(qPCR_input)[which(names(qPCR_input) == "target_organism")] <- TaxonomicRank
+      colnames(qPCR_input)[which(names(qPCR_input) == "target_organism")] <- taxonomic_rank
       qPCR_input <- dplyr::left_join(qPCR_input, TaxonomyDB,na_matches="never")
       qPCR_input$Image_URL <- ifelse(is.na(qPCR_input$Image_URL), 'https://images.phylopic.org/images/5d646d5a-b2dd-49cd-b450-4132827ef25e/raster/487x1024.png', qPCR_input$Image_URL)
-      if (TaxonomicRank != "kingdom") {
-        colnames(qPCR_input)[which(names(qPCR_input) == TaxonomicRank)] <- "Latin_Name"
+      if (taxonomic_rank != "kingdom") {
+        colnames(qPCR_input)[which(names(qPCR_input) == taxonomic_rank)] <- "Latin_Name"
       }
-      if (TaxonomicRank == "kingdom") {
+      if (taxonomic_rank == "kingdom") {
         qPCR_input$Latin_Name <- qPCR_input$kingdom
       }
       qPCR_input <- qPCR_input %>% mutate_all(~ifelse(is.na(.), " ", .))
@@ -228,11 +228,11 @@ tryCatch(
       datasets <- list(datasets = list(results=plotly_json(p, FALSE),metadata=toJSON(SampleDB)))
       
       #Save plot.
-      filename <- paste("Prevalence_qPCR_FirstDate",First_Date,"LastDate",Last_Date,"SpeciesList",SelectedSpeciesList,".json",sep="_")
+      filename <- paste("Prevalence_qPCR_FirstDate",first_date,"LastDate",last_date,"species_list",selected_species_list,".json",sep="_")
       filename <- gsub("_.json",".json",filename)
       filename <- tolower(filename)
       write(toJSON(datasets), filename)
-      system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", Project_ID, "/plots/", filename, " --endpoint-url ",ENDPOINT_URL, sep = ""), intern = TRUE)
+      system(paste("aws s3 cp ", filename, " s3://",bucket,"/projects/", project_id, "/plots/", filename, " --endpoint-url ",ENDPOINT_URL, sep = ""), intern = TRUE)
       system(paste("rm ", filename, sep = ""))
     }
   }

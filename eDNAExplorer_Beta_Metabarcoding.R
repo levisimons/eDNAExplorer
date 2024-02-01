@@ -1,11 +1,8 @@
 #!/usr/bin/env Rscript
 rm(list = ls())
 args <- commandArgs(trailingOnly = TRUE)
-require(tidyr)
-require(dplyr)
 require(vegan)
 require(ggplot2)
-require(lubridate)
 if (!require("BiocManager", quietly = TRUE)){
   install.packages("BiocManager")
   BiocManager::install("phyloseq")
@@ -15,315 +12,207 @@ require(htmlwidgets)
 require(plotly)
 require(jsonlite)
 require(data.table)
-require(DBI)
-require(RPostgreSQL)
 require(digest)
-require(uuid)
 
-# Fetch project ID early so we can use it for error output when possible.
-ProjectID <- args[1]
+source("helpers.R")
+source("init_report.R")
 
-readRenviron(".env")
-Sys.setenv("AWS_ACCESS_KEY_ID" = Sys.getenv("AWS_ACCESS_KEY_ID"),
-           "AWS_SECRET_ACCESS_KEY" = Sys.getenv("AWS_SECRET_ACCESS_KEY"))
-db_host <- Sys.getenv("db_host")
-db_port <- Sys.getenv("db_port")
-db_name <- Sys.getenv("db_name")
-db_user <- Sys.getenv("db_user")
-db_pass <- Sys.getenv("db_pass")
-bucket <- Sys.getenv("S3_BUCKET")
-home_dir <- Sys.getenv("home_dir")
-ENDPOINT_URL <- Sys.getenv("ENDPOINT_URL")
-
-if (length(args) != 12) {
-  stop("Need the following inputs: ProjectID, First_Date, Last_Date, Marker, Num_Mismatch, TaxonomicRank, CountThreshold, FilterThreshold, SpeciesList, EnvironmentalParameter, BetaDiversity, Sites", call. = FALSE)
-} else if (length(args) == 12) {
-  ProjectID <- args[1]
-  First_Date <- args[2]
-  Last_Date <- args[3]
-  Marker <- args[4]
-  Num_Mismatch <- args[5]
-  TaxonomicRank <- args[6]
-  CountThreshold <- args[7]
-  FilterThreshold <- args[8]
-  SpeciesList <- args[9]
-  EnvironmentalParameter <- args[10]
-  BetaDiversity <- args[11]
-  Sites <- args[12]
-  
-  #Define filters in Phyloseq as global parameters.
-  sample_ProjectID <<- as.character(ProjectID)
-  sample_First_Date <<- lubridate::ymd(First_Date)
-  sample_Last_Date <<- lubridate::ymd(Last_Date)
-  sample_Primer <<- as.character(Marker)
-  sample_TaxonomicRank <<- as.character(TaxonomicRank)
-  sample_Num_Mismatch <<- as.numeric(Num_Mismatch)
-  sample_CountThreshold <<- as.numeric(CountThreshold)
-  sample_FilterThreshold <<- as.numeric(FilterThreshold)
-  EnvironmentalVariable <<- as.character(EnvironmentalParameter)
-  BetaDiversityMetric <<- as.character(BetaDiversity)
-  SelectedSpeciesList <<- as.character(SpeciesList)
-  
-  if(Sites!="None"){
-    #Get alphabetized site list for a given project.
-    SelectedSiteList <- strsplit(Sites,split=",")[[1]]
-    Database_Driver <- dbDriver("PostgreSQL")
-    sapply(dbListConnections(Database_Driver), dbDisconnect)
-    con <- dbConnect(Database_Driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
-    ProjectSites <- tbl(con, "ProjectSite")
-    ProjectSites <- ProjectSites %>% filter(projectId == sample_ProjectID) %>% select(id,name)
-    ProjectSites <- as.data.frame(ProjectSites)
-    FilterSites <- ProjectSites[ProjectSites$id %in% SelectedSiteList,]
-    #Sort sites alphabetically
-    FilterSites <- FilterSites[order(FilterSites$id),]
-    FilterSite_ids <- FilterSites$id
-    #Get site IDs
-    #Get site names corresponding to selected site IDs.
-    FilterSite_names <<- FilterSites$name
-    #Generate the list of alphabetized sites, but only use their last four characters.
-    FilterSites_shortened <- sapply(FilterSite_ids, function(x) substr(x, nchar(x) - 3, nchar(x)))
-    # Concatenate into a single string with commas
-    FilterSites_shortened <<- paste(FilterSites_shortened, collapse = ",")
-  }
-  if(Sites=="None"){
-    FilterSites_shortened <<- "None"
-  }
-  
-  CategoricalVariables <- c("site","grtgroup","biome_type","iucn_cat","eco_name","hybas_id")
-  ContinuousVariables <- c("bio01","bio12","ghm","elevation","ndvi","average_radiance")
-  FieldVars <- c("fastqid","sample_date","latitude","longitude","spatial_uncertainty")
-  TaxonomicRanks <- c("superkingdom","kingdom","phylum","class","order","family","genus","species")
-  TaxonomicNum <<- as.numeric(which(TaxonomicRanks == sample_TaxonomicRank))
-  
-  #Save plot name.
-  filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,",json",sep="_")
-  filename <- gsub("_.json",".json",filename)
-  filename <- tolower(filename)
-}
-
-# Write error output to our json file.
-process_error <- function(e, filename = "error.json") {
-  error_message <- paste("Error:", e$message)
-  cat(error_message, "\n")
-  json_content <- jsonlite::toJSON(list(generating = FALSE, lastRanAt = Sys.time(), error = error_message))
-  write(json_content, filename)
-  
-  timestamp <- as.integer(Sys.time()) # Get Unix timestamp
-  new_filename <- paste(timestamp, filename, sep = "_") # Concatenate timestamp with filename
-  dest_filename <- sub("\\.json$", ".build", filename)
-  
-  s3_path <- if (is.null(ProjectID) || ProjectID == "") {
-    paste("s3://",bucket,"/errors/beta/", new_filename," --endpoint-url ",ENDPOINT_URL, sep = "")
-  } else {
-    paste("s3://",bucket,"/projects/", ProjectID, "/plots/error_", dest_filename, " --endpoint-url ",ENDPOINT_URL, sep = "")
-  }
-  
-  system(paste("aws s3 cp ", filename, " ", s3_path, sep = ""), intern = TRUE)
-  system(paste("rm ",filename,sep=""))
-  stop(error_message)
-}
-
-# Get filtering parameters.
-# ProjectID:string
-# First_Date:string YYYY-MM-DD
-# Last_Date:string YYYY-MM-DD
-# Marker:string Target marker name
-# Num_Mismatch:numeric Maximum number of sequence mismatches allowed with Tronko-assign output
-# TaxonomicRank:string Taxonomic level to aggregate results to
-# CountThreshold:numeric Read count threshold for retaining samples
-# FilterThreshold:numeric Choose a threshold for filtering ASVs prior to analysis
-# SpeciesList:string Name of csv file containing selected species list.
-# EnvironmentalParameter:string Environmental variable to analyze against alpha diversity
-# BetaDiversity:string Alpha diversity metric
-# Rscript --vanilla eDNAExplorer_Beta_Metabarcoding.R "ProjectID" "First_Date" "Last_Date" "Marker" "Num_Mismatch" "TaxonomicRank" "CountThreshold" "FilterThreshold" "SpeciesList" "EnvironmentalParameter" "BetaDiversity"
-
+# Rscript --vanilla eDNAExplorer_Beta_Metabarcoding.R "report_id"
 tryCatch(
   {
-    # Output a blank json output for plots as a default.  This gets overwritten is actual plot material exists.
-    data_to_write <- list(generating = TRUE, lastRanAt = Sys.time())
-    write(toJSON(data_to_write), filename)
-    dest_filename <- sub("\\.json$", ".build", filename) # Write to a temporary file first as .build
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",dest_filename," --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
-    system(paste("rm ",filename,sep=""))
-    
-    #Establish sql connection
-    Database_Driver <- dbDriver("PostgreSQL")
-    sapply(dbListConnections(Database_Driver), dbDisconnect)
-    con <- dbConnect(Database_Driver,host = db_host,port = db_port,dbname = db_name,user = db_user,password = db_pass)
-    
-    #Read in species list
-    if(SelectedSpeciesList != "None"){
-      SpeciesList_df <- tbl(con,"SpeciesListItem")
-      SpeciesList_df <- SpeciesList_df %>% filter(species_list == SelectedSpeciesList)
-      SpeciesList_df <- as.data.frame(SpeciesList_df)
+    # Read in species list
+    if(selected_species_list != "None"){
+      species_list_df <- tbl(con,"species_listItem")
+      species_list_df <- species_list_df %>% filter(species_list == selected_species_list)
+      species_list_df <- as.data.frame(species_list_df)
     }
     
-    #Read in information to map categorical labels for certain variables.
+    # Read in information to map categorical labels for certain variables.
     category_file <- paste("Categories_",UUIDgenerate(),".csv",sep="")
     system(paste("aws s3 cp s3://",bucket,"/analysis/Categories.csv ",category_file," --endpoint-url ",ENDPOINT_URL,sep=""))
     categories <- as.data.frame(fread(file=category_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A")))
     system(paste("rm ",category_file,sep=""))
-    #Read in information for legends and labels
+    
+    # Read in information for legends and labels
     legends_file <- paste("LabelsAndLegends_",UUIDgenerate(),".csv",sep="")
     system(paste("aws s3 cp s3://",bucket,"/analysis/LabelsAndLegends.csv ",legends_file," --endpoint-url ",ENDPOINT_URL,sep=""))
     legends_and_labels <- as.data.frame(fread(file=legends_file,header=TRUE, sep=",",skip=0,fill=TRUE,check.names=FALSE,quote = "\"", encoding = "UTF-8",na = c("", "NA", "N/A")))
     system(paste("rm ",legends_file,sep=""))
-    #Set up new legends and x-axis labels.
-    new_legend <- legends_and_labels[legends_and_labels$Environmental_Variable==EnvironmentalVariable,"Legend"]
-    new_axis_label <- legends_and_labels[legends_and_labels$Environmental_Variable==EnvironmentalVariable,"x_axis"]
     
-    # Read in metadata and filter it.
-    Metadata <- tbl(con, "TronkoMetadata")
-    Keep_Vars <- c(CategoricalVariables, ContinuousVariables, FieldVars)[c(CategoricalVariables, ContinuousVariables, FieldVars) %in% dbListFields(con, "TronkoMetadata")]
-    # Get the number of samples in a project before filtering.
-    Metadata_Unfiltered <- Metadata %>% filter(projectid == sample_ProjectID)
-    Metadata_Unfiltered <- as.data.frame(Metadata_Unfiltered)
-    total_Samples <- nrow(Metadata_Unfiltered)
-    #Metadata filtering if sites are selected for furthering filtering.
-    if(Sites!="None"){
-      Metadata <- Metadata %>%
-        filter(projectid == sample_ProjectID)
-      Metadata <- as.data.frame(Metadata)
-      Metadata <- Metadata[Metadata$site %in% FilterSite_names,]
+    # Set up new legends and x-axis labels.
+    new_legend <- legends_and_labels[legends_and_labels$Environmental_Variable==environmental_variable,"Legend"]
+    new_axis_label <- legends_and_labels[legends_and_labels$Environmental_Variable==environmental_variable,"x_axis"]
+    
+    result <- process_metadata(
+        con = con, 
+        project_id = project_id, 
+        has_sites = has_sites, 
+        filter_site_names = filter_site_names, 
+        sample_first_date = sample_first_date, 
+        sample_last_date = sample_last_date
+    )
+    metadata <- result$metadata
+    total_samples <- result$total_samples
+    
+    # Change values of selected variable
+    if(environmental_variable %in% unique(categories$Environmental_Variable)){
+      colnames(metadata)[colnames(metadata) == environmental_variable] <- 'value'
+      metadata <- dplyr::left_join(metadata,categories[categories$Environmental_Variable==environmental_variable,])
+      colnames(metadata)[colnames(metadata) == 'description'] <- environmental_variable
     }
-    if(Sites=="None"){
-      Metadata <- Metadata %>%
-        filter(projectid == sample_ProjectID)
-      Metadata <- as.data.frame(Metadata)
-    }
-    Metadata$sample_date <- lubridate::ymd(Metadata$sample_date)
-    Metadata <- Metadata %>% filter(sample_date >= sample_First_Date & sample_date <= sample_Last_Date)
-    if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
+    
+    # Create sample metadata matrix
+    if(nrow(metadata) == 0 || ncol(metadata) == 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
     }
-    Metadata$fastqid <- gsub("_", "-", Metadata$fastqid)
-    
-    #Change values of selected variable
-    if(EnvironmentalVariable %in% unique(categories$Environmental_Variable)){
-      colnames(Metadata)[colnames(Metadata) == EnvironmentalVariable] <- 'value'
-      Metadata <- dplyr::left_join(Metadata,categories[categories$Environmental_Variable==EnvironmentalVariable,])
-      colnames(Metadata)[colnames(Metadata) == 'description'] <- EnvironmentalVariable
-    }
-    
-    #Create sample metadata matrix
-    if(nrow(Metadata) == 0 || ncol(Metadata) == 0) {
-      stop("Error: Sample data frame is empty. Cannot proceed.")
-    }
-    Sample <- Metadata[!is.na(Metadata$fastqid),]
-    rownames(Sample) <- Sample$fastqid
-    Sample$fastqid <- NULL
-    Sample <- sample_data(Sample)
-    remaining_Samples <- rownames(Sample)
-    
+    sample <- metadata[!is.na(metadata$fastqid),]
+    rownames(sample) <- sample$fastqid
+    sample$fastqid <- NULL
+    sample <- sample_data(sample)
+
     # Read in Tronko output and filter it.
-    TronkoFile <- paste(sample_Primer, ".csv", sep = "")
-    TronkoFile_tmp <- paste(sample_Primer,"_beta_",UUIDgenerate(),".csv",sep="")
-    system(paste("aws s3 cp s3://",bucket,"/tronko_output/", sample_ProjectID, "/", TronkoFile, " ", TronkoFile_tmp, " --endpoint-url ",ENDPOINT_URL, sep = ""))
-    #Check if file exists.
-    if(file.info(TronkoFile_tmp)$size== 0) {
+    updateReport(report_id, "LOADING", con)
+    tronko_file_tmp = download_primer(sample_primer, sample_project_id, bucket)
+ 
+    # Throw if the tronko file is empty
+    if(file.info(tronko_file_tmp)$size== 0) {
       stop("Error: Sample data frame is empty. Cannot proceed.")
     }
+
+    # Primer has been downloaded loaded, update the report record to the BUILDING state.
+    updateReport(report_id, "BUILDING", con)
+    
     # Select relevant columns in bash (SampleID, taxonomic ranks, Mismatch)
-    SubsetFile <- paste("subset_beta_",UUIDgenerate(),".csv",sep="")
-    awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",TronkoFile_tmp, SubsetFile)
+    subset_file <- paste("subset_beta_",UUIDgenerate(),".csv",sep="")
+    print("Filtering Tronko output.")
+    awk_command <- sprintf("awk -F, 'BEGIN {OFS=\",\"} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} {print $col[\"SampleID\"], $col[\"superkingdom\"], $col[\"kingdom\"], $col[\"phylum\"], $col[\"class\"], $col[\"order\"], $col[\"family\"], $col[\"genus\"], $col[\"species\"], $col[\"Mismatch\"]}' %s > %s",tronko_file_tmp, subset_file)
     system(awk_command, intern = TRUE)
-    TronkoInput <- fread(file=SubsetFile, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
-    TronkoInput$Mismatch <- as.numeric(as.character(TronkoInput$Mismatch))
-    #Remove samples with missing coordinates, and which are outside of the date filters.
-    TronkoInput <- TronkoInput[TronkoInput$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
-    #Store the unfiltered reads.
-    Tronko_Unfiltered <- TronkoInput
+    print("Finished filtering Tronko output.")
+    tronko_input <- fread(file=subset_file, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A"))
+    print("Finished reading Tronko output.")
+    tronko_input$Mismatch <- as.numeric(as.character(tronko_input$Mismatch))
+    print("Finished converting Tronko output.")
+    
+    # Remove samples with missing coordinates, and which are outside of the date filters.
+    tronko_input <- tronko_input[tronko_input$SampleID %in% unique(na.omit(metadata$fastqid)), ]
+    print("Finished removing samples with missing coordinates.")
+    
+    # Store the unfiltered reads.
+    tronko_unfiltered <- tronko_input
+    print("Finished storing unfiltered reads.")
+    print(names(tronko_unfiltered))
+    print(paste("Calculating relative abundance of taxa with a given rank in the unfiltered reads.", taxonomic_rank, sep=" "))
+    
     # Calculate relative abundance of taxa with a given rank in the unfiltered reads.
-    Tronko_Unfiltered <- Tronko_Unfiltered %>%
-      dplyr::group_by(SampleID, !!sym(TaxonomicRank)) %>%
+    tronko_unfiltered <- tronko_unfiltered %>%
+      dplyr::group_by(SampleID, !!sym(taxonomic_rank)) %>%
       dplyr::summarise(n = n()) %>%
       dplyr::mutate(freq = n / sum(n)) %>%
       dplyr::ungroup() %>% select(-n)
-    #Filter on the number of reads per sample, then a mismatch threshold.
-    TronkoInput <- TronkoInput %>% group_by(SampleID) %>%
-      filter(n() > sample_CountThreshold) %>% filter(Mismatch <= sample_Num_Mismatch & !is.na(Mismatch)) %>% select(-Mismatch)
-    #Merege relative abudance results into data filtered by reads per sample and mismatches.
-    #Then filtered on relative abundances.
-    TronkoDB <- TronkoInput %>%
-      left_join(Tronko_Unfiltered,na_matches="never") %>%
-      filter(freq >= FilterThreshold) %>% select(-freq)
-    TronkoDB <- as.data.frame(TronkoDB)
-    # Remove duplicated
-    TronkoDB <- TronkoDB[!duplicated(TronkoDB),]
-    #Remove taxa which are unknown at a given rank.
-    TronkoDB <- TronkoDB[,c("SampleID",TaxonomicRanks[1:TaxonomicNum])]
-    TronkoDB <- TronkoDB[!is.na(TronkoDB[, sample_TaxonomicRank]), ]
-    #Filter results by species list.
-    if (SelectedSpeciesList != "None") {
-      TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)) & TronkoDB$species %in% SpeciesList_df$name, ]
-    }
-    if (SelectedSpeciesList == "None") {
-      TronkoDB <- TronkoDB[TronkoDB$SampleID %in% unique(na.omit(Metadata$fastqid)), ]
-    }
-    system(paste("rm ",TronkoFile_tmp,sep=""))
-    system(paste("rm ",SubsetFile,sep=""))
+    print("Finished calculating relative abundance of taxa with a given rank in the unfiltered reads.")
     
-    if(nrow(TronkoDB)>1){
+    # Filter on the number of reads per sample, then a mismatch threshold.
+    tronko_input <- tronko_input %>% group_by(SampleID) %>%
+      filter(n() > sample_count_threshold) %>% filter(Mismatch <= sample_num_mismatch & !is.na(Mismatch)) %>% select(-Mismatch)
+    print("Finished filtering on the number of reads per sample, then a mismatch threshold.")
+    
+    # Merge relative abudance results into data filtered by reads per sample and mismatches
+    # and then filtered on relative abundances.
+    tronko_db <- tronko_input %>%
+      left_join(tronko_unfiltered,na_matches="never") %>%
+      filter(freq >= filter_threshold) %>% select(-freq)
+    print("Finished merging relative abudance results into data filtered by reads per sample and mismatches.")
+    tronko_db <- as.data.frame(tronko_db)
+    print("Finished filtering on relative abundances.")
+    
+    # Remove duplicated
+    tronko_db <- tronko_db[!duplicated(tronko_db),]
+    print("Finished removing duplicated.")
+    
+    # Remove taxa which are unknown at a given rank.
+    tronko_db <- tronko_db[,c("SampleID",taxonomic_ranks[1:taxonomic_num])]
+    tronko_db <- tronko_db[!is.na(tronko_db[, sample_taxonomic_rank]), ]
+    print("Finished removing taxa which are unknown at a given rank.")
+
+    # Filter results by species list.
+    if (selected_species_list != "None") {
+      tronko_db <- tronko_db[tronko_db$SampleID %in% unique(na.omit(metadata$fastqid)) & tronko_db$species %in% species_list_df$name, ]
+    }
+    if (selected_species_list == "None") {
+      tronko_db <- tronko_db[tronko_db$SampleID %in% unique(na.omit(metadata$fastqid)), ]
+    }
+    system(paste("rm ",subset_file,sep=""))
+    
+    if(nrow(tronko_db)>1){
+      print("Generating OTU matrix.")
       #Create OTU matrix
-      otumat <- as.data.frame(pivot_wider(as.data.frame(table(TronkoDB[,c("SampleID",sample_TaxonomicRank)])), names_from = SampleID, values_from = Freq))
-      rownames(otumat) <- otumat[,sample_TaxonomicRank]
-      otumat <- otumat[,colnames(otumat) %in% unique(TronkoDB$SampleID)]
+      otumat <- as.data.frame(pivot_wider(as.data.frame(table(tronko_db[,c("SampleID",sample_taxonomic_rank)])), names_from = SampleID, values_from = Freq))
+      rownames(otumat) <- otumat[,sample_taxonomic_rank]
+      otumat <- otumat[,colnames(otumat) %in% unique(tronko_db$SampleID)]
       otumat[sapply(otumat, is.character)] <- lapply(otumat[sapply(otumat, is.character)], as.numeric)
-      OTU <- otu_table(as.matrix(otumat), taxa_are_rows = TRUE)
+      otu <- otu_table(as.matrix(otumat), taxa_are_rows = TRUE)
       
       #Create merged Phyloseq object.
-      physeq <- phyloseq(OTU,Sample)
-      AbundanceFiltered <- physeq
+      physeq <- phyloseq(otu,sample)
+      abundance_filtered <- physeq
       
       #Plot and analyze beta diversity versus an environmental variables.
-      if(nsamples(AbundanceFiltered)>1 & ntaxa(AbundanceFiltered)>1){
-        if(BetaDiversityMetric!="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F)}
-        if(BetaDiversityMetric=="jaccard"){BetaDist = phyloseq::distance(AbundanceFiltered, method=BetaDiversityMetric, weighted=F,binary=T)}
-        if(sum(BetaDist)<=0){stop(paste("There is not enough data in this project to calculate",BetaDiversityMetric,"beta diversity for the current filter settings."))}
+      if(nsamples(abundance_filtered)>1 & ntaxa(abundance_filtered)>1){
+        if(beta_diversity_metric!="jaccard"){BetaDist = phyloseq::distance(abundance_filtered, method=beta_diversity_metric, weighted=F)}
+        if(beta_diversity_metric=="jaccard"){BetaDist = phyloseq::distance(abundance_filtered, method=beta_diversity_metric, weighted=F,binary=T)}
+        if(sum(BetaDist)<=0){stop(paste("There is not enough data in this project to calculate",beta_diversity_metric,"beta diversity for the current filter settings."))}
         if(sum(!is.nan(BetaDist))>1){
-          ordination = ordinate(AbundanceFiltered, method="PCoA", distance=BetaDist)
-          AbundanceFiltered_df <- data.frame(sample_data(AbundanceFiltered))
-          if(length(unique(AbundanceFiltered@sam_data[[EnvironmentalVariable]]))>1){
-            BetaExpression = paste('adonis2(BetaDist ~ sample_data(AbundanceFiltered)[[',deparse(EnvironmentalVariable),']])',sep="")
-            test <- eval(parse(text=BetaExpression))
-            Stat_test <- paste("PCA plot.  Results of PERMANOVA, using 999 permutations.\n",BetaDiversityMetric," beta diversity and ",new_legend,"\nDegrees of freedom: ",round(test$Df[1],3),". Sum of squares: ",round(test$SumOfSqs[1],3),". R-squared: ",round(test$R2[1],3),". F-statistic: ",round(test$F[1],3),". p: ",round(test$`Pr(>F)`[1],3),sep="")
+          ordination = ordinate(abundance_filtered, method="PCoA", distance=BetaDist)
+          abundance_filtered_df <- data.frame(sample_data(abundance_filtered))
+          if(length(unique(abundance_filtered@sam_data[[environmental_variable]]))>1){
+            beta_expression = paste('adonis2(BetaDist ~ sample_data(abundance_filtered)[[',deparse(environmental_variable),']])',sep="")
+            test <- eval(parse(text=beta_expression))
+            stat_test <- paste("PCA plot.  Results of PERMANOVA, using 999 permutations.\n",beta_diversity_metric," beta diversity and ",new_legend,"\nDegrees of freedom: ",round(test$Df[1],3),". Sum of squares: ",round(test$SumOfSqs[1],3),". R-squared: ",round(test$R2[1],3),". F-statistic: ",round(test$F[1],3),". p: ",round(test$`Pr(>F)`[1],3),sep="")
           } else {
-            Stat_test <- paste("PCA plot.  Not enough variation in ",new_legend," to perform a PERMANOVA on beta diversity.",sep="")
+            stat_test <- paste("PCA plot.  Not enough variation in ",new_legend," to perform a PERMANOVA on beta diversity.",sep="")
           }
-          p <- plot_ordination(AbundanceFiltered, ordination, color=EnvironmentalVariable) + theme(aspect.ratio=1) + labs(title = Stat_test, color = EnvironmentalVariable)
+          p <- plot_ordination(abundance_filtered, ordination, color=environmental_variable) + theme(aspect.ratio=1) + labs(title = stat_test, color = environmental_variable)
           p <- p+theme_bw()
         } else{
-          Stat_test <- "PCA plot.  Not enough remaining data after filters to perform a PERMANOVA on beta diversity."
-          p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
+          stat_test <- "PCA plot.  Not enough remaining data after filters to perform a PERMANOVA on beta diversity."
+          p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=stat_test)
         }
       } else {
-        Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
-        p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
+        stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
+        p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=stat_test)
       }
     } else {
-      Stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
-      p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=Stat_test)
+      stat_test <- "PCA plot.  Not enough data to perform a PERMANOVA on beta diversity."
+      p <- ggplot(data.frame())+geom_point()+xlim(0, 1)+ylim(0, 1)+labs(title=stat_test)
     }
     
-    #Insert the number of samples and number of samples post-filtering as a return object.
-    SampleDB <- data.frame(matrix(ncol=2,nrow=1))
-    colnames(SampleDB) <- c("totalSamples","filteredSamples")
-    SampleDB$totalSamples <- total_Samples
-    SampleDB$filteredSamples <- nsamples(AbundanceFiltered)
-    #Change legend label
-    datasets <- list(datasets = list(results=gsub(EnvironmentalVariable,new_legend,plotly_json(p, FALSE)),metadata=toJSON(SampleDB)))
+    # Insert the number of samples and number of samples post-filtering as a return object.
+    sample_db <- data.frame(matrix(ncol=2,nrow=1))
+    colnames(sample_db) <- c("totalSamples","filteredSamples")
+    sample_db$totalSamples <- total_samples
+    sample_db$filteredSamples <- nsamples(abundance_filtered)
+    # Change legend label
+    datasets <- list(datasets = list(results=gsub(environmental_variable,new_legend,plotly_json(p, FALSE)),metadata=toJSON(sample_db)))
     
-    #Save plot as json object
-    filename <- paste("Beta_Metabarcoding_FirstDate",sample_First_Date,"LastDate",sample_Last_Date,"Marker",sample_Primer,"Rank",sample_TaxonomicRank,"Mismatch",sample_Num_Mismatch,"CountThreshold",sample_CountThreshold,"AbundanceThreshold",format(sample_FilterThreshold,scientific=F),"Variable",EnvironmentalVariable,"Diversity",BetaDiversityMetric,"SpeciesList",SelectedSpeciesList,"Sites",FilterSites_shortened,",json",sep="_")
-    filename <- gsub("_.json",".json",filename)
-    filename <- tolower(filename)
+    # Save plot as json object.
     write(toJSON(datasets),filename)
-    system(paste("aws s3 cp ",filename," s3://",bucket,"/projects/",sample_ProjectID,"/plots/",filename," --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
+    file_key <- paste("projects/",sample_project_id,"/plots/",filename,sep="")
+    system(paste("aws s3 cp ",filename," s3://",bucket,"/",file_key," --endpoint-url ",ENDPOINT_URL,sep=""),intern=TRUE)
     system(paste("rm ",filename,sep=""))
     
+    # Update report with file key.
+    sql_query <- sprintf(
+      "UPDATE \"Report\" SET \"fileKey\" = '%s' WHERE \"id\" = '%s'",
+      file_key, report_id
+    )
+    print(paste("Updating report", report_id, "with file key", file_key, sep = " "))
+    dbExecute(con, sql_query)
+    updateReport(report_id, "COMPLETED", con)
     RPostgreSQL::dbDisconnect(con, shutdown=TRUE)
   },
   error = function(e) {
-    process_error(e, filename)
+    print("Error in eDNAExplorer_Alpha_Metabarcoding.R:")
+    print(e$message)
+    process_error(e, report_id, project_id, con)
   }
 )
