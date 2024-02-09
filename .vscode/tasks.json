@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Docker Container",
+      "type": "shell",
+      "command": "docker run -d --name edna-explorer-reports -p 8080:8080 -v ${workspaceFolder}:/home/ubuntu/eDNAExplorer -w /home/ubuntu/eDNAExplorer 576661951794.dkr.ecr.us-west-1.amazonaws.com/reports:latest sleep infinity",
+      "problemMatcher": []
+    },
+    {
+      "label": "Shell into Docker Container",
+      "type": "shell",
+      "command": "docker exec -it edna-explorer-reports /bin/bash",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "options": {
+        "shell": {
+          "executable": "bash",
+          "args": ["-c"]
+        }
+      }
+    },
+    {
+      "label": "Terminate Docker Container",
+      "type": "shell",
+      "command": "docker stop edna-explorer-reports && docker rm edna-explorer-reports",
+      "problemMatcher": []
+    }
+  ]
+}
