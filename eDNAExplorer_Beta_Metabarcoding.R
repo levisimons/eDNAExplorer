@@ -20,6 +20,10 @@ source("init_report.R")
 # Rscript --vanilla eDNAExplorer_Beta_Metabarcoding.R "report_id"
 tryCatch(
   {
+    print("Beta diversity script started.")
+    print("Reading in species list.")
+    print(selected_species_list)
+    print(paste("Reading in species list.", selected_species_list, sep = ", "))
     # Read in species list
     if (selected_species_list != "None") {
       species_list_df <- tbl(con, "species_listItem")
@@ -27,6 +31,7 @@ tryCatch(
       species_list_df <- as.data.frame(species_list_df)
     }
 
+    profile_statement("Reading in information to map LabelsAndLegends.", TRUE)
     # Read in information to map categorical labels for certain variables.
     category_file <- paste("Categories_", UUIDgenerate(), ".csv", sep = "")
     system(paste("aws s3 cp s3://", bucket, "/analysis/Categories.csv ", category_file, " --endpoint-url ", ENDPOINT_URL, sep = ""))
@@ -38,28 +43,38 @@ tryCatch(
     system(paste("aws s3 cp s3://", bucket, "/analysis/LabelsAndLegends.csv ", legends_file, " --endpoint-url ", ENDPOINT_URL, sep = ""))
     legends_and_labels <- as.data.frame(fread(file = legends_file, header = TRUE, sep = ",", skip = 0, fill = TRUE, check.names = FALSE, quote = "\"", encoding = "UTF-8", na = c("", "NA", "N/A")))
     system(paste("rm ", legends_file, sep = ""))
+    profile_statement("Finished reading in information to map LabelsAndLegends.", FALSE)
+
 
     # Set up new legends and x-axis labels.
+    profile_statement("Setting up new legends and x-axis labels.", TRUE)
     new_legend <- legends_and_labels[legends_and_labels$Environmental_Variable == environmental_variable, "Legend"]
     new_axis_label <- legends_and_labels[legends_and_labels$Environmental_Variable == environmental_variable, "x_axis"]
+    profile_statement("Finished setting up new legends and x-axis labels.")
 
+    # Read in metadata and filter it
+    profile_statement("start: process_metadata", TRUE)
     result <- process_metadata(
       con = con,
       project_id = project_id,
       has_sites = has_sites,
       filter_site_names = filter_site_names,
       sample_first_date = sample_first_date,
-      sample_last_date = sample_last_date
+      sample_last_date = sample_last_date,
+      environmental_variable = environmental_parameter
     )
     metadata <- result$metadata
     total_samples <- result$total_samples
+    profile_statement("end: process_metadata")
 
     # Change values of selected variable
+    profile_statement("Changing values of selected variable.", TRUE)
     if (environmental_variable %in% unique(categories$Environmental_Variable)) {
       colnames(metadata)[colnames(metadata) == environmental_variable] <- "value"
       metadata <- dplyr::left_join(metadata, categories[categories$Environmental_Variable == environmental_variable, ])
       colnames(metadata)[colnames(metadata) == "description"] <- environmental_variable
     }
+    profile_statement("Finished changing values of selected variable.", FALSE)
 
     # Create sample metadata matrix
     if (nrow(metadata) == 0 || ncol(metadata) == 0) {
