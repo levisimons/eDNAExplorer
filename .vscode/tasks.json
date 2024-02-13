@@ -1,0 +1,92 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run ECR:latest",
+      "type": "shell",
+      "command": "docker run -d --name edna-explorer-reports -p 8080:8080 -v ${workspaceFolder}:/home/ubuntu/eDNAExplorer -w /home/ubuntu/eDNAExplorer 576661951794.dkr.ecr.us-west-1.amazonaws.com/reports:latest sleep infinity",
+      "problemMatcher": []
+    },
+    {
+      "label": "ECR:latest Shell",
+      "type": "shell",
+      "command": "docker exec -it edna-explorer-reports /bin/bash",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "options": {
+        "shell": {
+          "executable": "bash",
+          "args": ["-c"]
+        }
+      }
+    },
+    {
+      "label": "Stop ECR:latest",
+      "type": "shell",
+      "command": "docker stop edna-explorer-reports && docker rm edna-explorer-reports",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build RStudio",
+      "type": "shell",
+      "command": "aws ecr get-login-password --region us-west-1 --profile edna-explorer | docker login --username AWS --password-stdin 576661951794.dkr.ecr.us-west-1.amazonaws.com && docker build -t reports-dev:1 ./RDev",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "options": {
+        "env": {
+          "AWS_ACCESS_KEY_ID": "your_access_key",
+          "AWS_SECRET_ACCESS_KEY": "your_secret_key",
+          "AWS_DEFAULT_REGION": "us-west-1"
+        }
+      }
+    },
+    {
+      "label": "Start RStudio",
+      "type": "shell",
+      "command": "docker run -d --name reports-container -p 8788:8788 -v ${workspaceFolder}:/home/ubuntu/eDNAExplorer -w /home/ubuntu/eDNAExplorer reports-dev:1",
+      "problemMatcher": [],
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Stop RStudio",
+      "type": "shell",
+      "command": "docker stop reports-container && docker rm reports-container",
+      "problemMatcher": [],
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "RStudio Shell",
+      "type": "shell",
+      "command": "docker exec -it reports-container /bin/bash",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "options": {
+        "shell": {
+          "executable": "bash",
+          "args": ["-c"]
+        }
+      }
+    }
+  ]
+}

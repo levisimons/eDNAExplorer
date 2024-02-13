@@ -26,7 +26,8 @@ tryCatch(
         has_sites = has_sites, 
         filter_site_names = filter_site_names, 
         sample_first_date = sample_first_date, 
-        sample_last_date = sample_last_date
+        sample_last_date = sample_last_date,
+        environmental_variable = environmental_parameter
     )
     metadata <- result$metadata
     total_samples <- result$total_samples
