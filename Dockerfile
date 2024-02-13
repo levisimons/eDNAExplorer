@@ -30,7 +30,8 @@ RUN apt-get install -y \
   software-properties-common \
   dirmngr \
   awscli \
-  parallel
+  parallel \
+  git
 
 
 # Add CRAN Repository for R 4.3.x
