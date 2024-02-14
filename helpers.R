@@ -73,7 +73,8 @@ process_metadata <- function(con, project_id, has_sites, filter_site_names, samp
   result <- dbGetQuery(con, sql_query)
   total_samples <- result$total_samples
 
-  if (is.null(environmental_variable) || environmental_variable == "") {
+  if (is.null(environmental_variable) ||
+    (is.character(environmental_variable) && (length(environmental_variable) == 0 || any(environmental_variable == "")))) {
     environmental_variable <- "grtgroup"
   }
 
