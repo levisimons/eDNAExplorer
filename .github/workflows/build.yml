@@ -1,11 +1,17 @@
 name: Deploy to AWS ECR
 
 on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main, develop]
+    paths:
+      - "Dockerfile"
+      - "env.yml"
+      - "install.R"
+      - "install_biocmanager.R"
+
   push:
-    branches:
-      - develop # Set to your default branch
-      - main
-      - "*"
+    branches: [main, develop]
     paths:
       - "Dockerfile"
       - "env.yml"
