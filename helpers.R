@@ -28,6 +28,7 @@ updateReport <- function(report_id, newBuildState, con, reset = FALSE) {
 # Write error output to our json file.
 process_error <- function(e, report_id, project_id, con, errorType = "error") {
   library(DBI)
+  library(sentryR)
   error_message <- paste("Error:", e$message)
   cat(error_message, "\n")
   updateReport(report_id, "FAILED", con)
@@ -37,7 +38,7 @@ process_error <- function(e, report_id, project_id, con, errorType = "error") {
 
   # Execute the query with parameters
   dbExecute(con, sql_query, list(e$message, report_id))
-
+  capture_exception(e)
   stop(error_message)
 }
 
