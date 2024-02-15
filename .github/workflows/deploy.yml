@@ -41,3 +41,11 @@ jobs:
       - name: Clean up SSH key
         run: |
           rm -f ~/.ssh/id_rsa
+      - name: Deploy to EFS
+        env:
+          DEPLOY_ENVIRONMENT: staging # or prod, set this according to your workflow/environment variables
+        run: |
+          echo "Triggering call to deploy to $DEPLOY_ENVIRONMENT environment"
+          FUNCTION_NAME="edna-explorer-$DEPLOY_ENVIRONMENT-reports"
+          PAYLOAD='{"reportType": "update", "reportId": "'"$(date +%Y%m%d%H%M%S)"'"}'
+          aws lambda invoke --function-name $FUNCTION_NAME --payload "$PAYLOAD" response.json
