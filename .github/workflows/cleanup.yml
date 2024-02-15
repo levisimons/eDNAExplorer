@@ -1,0 +1,33 @@
+name: Cleanup ECR
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main, develop]
+    paths:
+      - "Dockerfile"
+      - "env.yml"
+      - "install.R"
+      - "install_biocmanager.R"
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1 # Set your AWS region
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Optionally delete image from Amazon ECR
+        continue-on-error: true
+        env:
+          IMAGE_TAG: ${{ github.event.pull_request.head.sha }} # Remove the image named after the sha of the PR if it exists
+        run: |
+          aws ecr batch-delete-image --repository-name reports --image-ids imageTag=$IMAGE_TAG
