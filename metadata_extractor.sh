@@ -5,8 +5,9 @@ INPUT_QPCR=""
 SHOULD_RENAME="false"
 METADATA_SCRIPT="$(pwd)/metadata_extractor.py"
 METABARCODING_INITIALIZER="$(pwd)/eDNAExplorer_Metabarcoding_Metadata_Initializer.R"
+SERVICE_CREDENTIALS="$(pwd)/google_earth_engine_service.json"
 CONDASH=f"/usr/local/miniconda/etc/profile.d/conda.sh"
-while getopts "1:2:p:k:s:r:b:e:a:c:" opt; do
+while getopts "1:2:p:c:" opt; do
     case $opt in
         1) INPUT_METABARCODING="$OPTARG"
         ;;
@@ -14,26 +15,8 @@ while getopts "1:2:p:k:s:r:b:e:a:c:" opt; do
         ;;
         p) PROJECTID="$OPTARG"
         ;;
-        k) AWS_ACCESS_KEY_ID="$OPTARG"
-        ;;
-        s) AWS_SECRET_ACCESS_KEY="$OPTARG"
-        ;;
-        r) AWS_DEFAULT_REGION="$OPTARG"
-        ;;
-        b) AWS_BUCKET="$OPTARG"
-        ;;
-        e) AWS_ENDPOINT="$OPTARG"
-        ;;
-        a) SERVICE_ACCOUNT="$OPTARG"
-        ;;
-        c) SERVICE_CREDENTIALS="$OPTARG"
-        ;;
     esac
 done
-
-export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
 
 JOBFOLDER="${PROJECTID}_$(openssl rand -hex 5)"
 
@@ -48,7 +31,7 @@ trap cleanup EXIT
 # download input metadata 1
 if [ -n "$INPUT_METABARCODING" ]; then
     mkdir -p $JOBFOLDER/tmp1
-    aws s3 cp s3://$AWS_BUCKET/projects/$PROJECTID/$INPUT_METABARCODING $JOBFOLDER/ --no-progress --endpoint-url $AWS_ENDPOINT
+    aws s3 cp s3://$AWS_BUCKET/projects/$PROJECTID/$INPUT_METABARCODING $JOBFOLDER/ --no-progress
 
     #de-duplicate rows
     awk -F, 'BEGIN {OFS=","} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} !seen[$col["Sample ID"], $col["Latitude"], $col["Longitude"], $col["Sample Date"], $col["Spatial Uncertainty"]]++' "$JOBFOLDER/$INPUT_METABARCODING" > "$FOLDER/temp_file.csv"
@@ -77,7 +60,7 @@ if [ -n "$INPUT_METABARCODING" ]; then
     cat "$JOBFOLDER/headers.txt" "$JOBFOLDER/output.txt" > $JOBFOLDER/$OUTPUT_METADATA
 
     # upload output metadata
-    aws s3 cp $JOBFOLDER/$OUTPUT_METADATA s3://$AWS_BUCKET/projects/$PROJECTID/$OUTPUT_METADATA --no-progress --endpoint-url $AWS_ENDPOINT
+    aws s3 cp $JOBFOLDER/$OUTPUT_METADATA s3://$AWS_BUCKET/projects/$PROJECTID/$OUTPUT_METADATA --no-progress
 
     #cleanup
     cleanup
@@ -89,7 +72,7 @@ fi
 # download input qPCR file
 if [ -n "$INPUT_QPCR" ]; then
     mkdir -p $JOBFOLDER/tmp2
-    aws s3 cp s3://$AWS_BUCKET/projects/$PROJECTID/$INPUT_QPCR $JOBFOLDER/ --no-progress --endpoint-url $AWS_ENDPOINT
+    aws s3 cp s3://$AWS_BUCKET/projects/$PROJECTID/$INPUT_QPCR $JOBFOLDER/ --no-progress
 
     #de-duplicate rows
     awk -F, 'BEGIN {OFS=","} NR == 1 {for (i=1; i<=NF; i++) col[$i] = i} !seen[$col["Sample ID"], $col["Latitude"], $col["Longitude"], $col["Sample Date"], $col["Spatial Uncertainty"]]++' "$JOBFOLDER/$INPUT_QPCR" > "$JOBFOLDER/temp_file.csv"
@@ -117,7 +100,7 @@ if [ -n "$INPUT_QPCR" ]; then
     cat "$JOBFOLDER/headers.txt" "$JOBFOLDER/output.txt" > $JOBFOLDER/$OUTPUT_METADATA
 
     # upload output metadata
-    aws s3 cp $JOBFOLDER/$OUTPUT_METADATA s3://$AWS_BUCKET/projects/$PROJECTID/$OUTPUT_METADATA --no-progress --endpoint-url $AWS_ENDPOINT
+    aws s3 cp $JOBFOLDER/$OUTPUT_METADATA s3://$AWS_BUCKET/projects/$PROJECTID/$OUTPUT_METADATA --no-progress
 
     #cleanup
     cleanup
