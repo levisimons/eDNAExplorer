@@ -1,6 +1,13 @@
-name: Build & Test
+name: Test & Deploy
 
 on:
+  workflow_run:
+    workflows: ["Deploy to AWS ECR"]
+    types:
+      - completed
+    branches:
+      - main
+      - develop
   pull_request:
     types: [opened, edited, synchronize, reopened]
     branches: [main, develop]
