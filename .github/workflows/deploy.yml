@@ -35,5 +35,5 @@ jobs:
         run: |
           echo "Triggering call to deploy to $DEPLOY_ENVIRONMENT environment"
           FUNCTION_NAME="edna-explorer-$DEPLOY_ENVIRONMENT-reports"
-          PAYLOAD='{"reportType": "update", "reportId": "'"$(date +%Y%m%d%H%M%S)"'"}'
-          aws lambda invoke --function-name $FUNCTION_NAME --payload "$PAYLOAD" response.json
+          PAYLOAD=$(echo -n '{"reportType": "update", "reportId": "'"$(date +%Y%m%d%H%M%S)"'"}' | base64)
+          aws lambda invoke --function-name $FUNCTION_NAME --payload $PAYLOAD response.json
