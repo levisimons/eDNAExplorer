@@ -1,4 +1,4 @@
-name: Test & Deploy
+name: Deploy
 
 on:
   workflow_run:
@@ -41,9 +41,15 @@ jobs:
       - name: Clean up SSH key
         run: |
           rm -f ~/.ssh/id_rsa
+      - name: Configure AWS Credentials for Dynamic Region
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          audience: sts.amazonaws.com
+          aws-region: ${{ secrets.AWS_ACCESS_DEFAULT_REGION }}
+          role-to-assume: arn:aws:iam::576661951794:role/GitHubActions-ServerlessDeploy
       - name: Deploy to EFS
         env:
-          DEPLOY_ENVIRONMENT: staging # or prod, set this according to your workflow/environment variables
+          DEPLOY_ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
         run: |
           echo "Triggering call to deploy to $DEPLOY_ENVIRONMENT environment"
           FUNCTION_NAME="edna-explorer-$DEPLOY_ENVIRONMENT-reports"
