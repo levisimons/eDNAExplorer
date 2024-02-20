@@ -48,7 +48,7 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "IMAGE_TAG=latest" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/staging" ]]; then
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "IMAGE_TAG=staging" >> $GITHUB_OUTPUT
           else
             echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_OUTPUT
@@ -56,24 +56,6 @@ jobs:
 
       - name: Write image tag to a file
         run: echo "${{ steps.set-tag.outputs.IMAGE_TAG }}" > image_tag.txt
-
-      - name: Upload image tag as an artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: image-tag
-          path: image_tag.txt
-
-      - name: Output GitHub context to a file
-        env:
-          GITHUB_CONTEXT: ${{ toJson(github) }}
-        run: |
-          echo "$GITHUB_CONTEXT" > github_context.json
-
-      - name: Upload GitHub context as an artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: github-context
-          path: github_context.json
 
       # - name: Build, tag, and push image to Amazon ECR
       #   env:
