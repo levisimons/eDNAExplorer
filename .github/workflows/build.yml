@@ -4,26 +4,26 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
     branches: [main, develop]
-    paths:
-      - "Dockerfile"
-      - "env.yml"
-      - "install.R"
-      - "install_biocmanager.R"
+    # paths:
+    #   - "Dockerfile"
+    #   - "env.yml"
+    #   - "install.R"
+    #   - "install_biocmanager.R"
 
   push:
     branches: [main, develop]
-    paths:
-      - "Dockerfile"
-      - "env.yml"
-      - "install.R"
-      - "install_biocmanager.R"
+    # paths:
+    #   - "Dockerfile"
+    #   - "env.yml"
+    #   - "install.R"
+    #   - "install_biocmanager.R"
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -32,29 +32,38 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1 # Set your AWS region
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      # - name: Login to Amazon ECR
+      #   id: login-ecr
+      #   uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Pull existing image from ECR as cache
-        run: docker pull ${{ steps.login-ecr.outputs.registry }}/reports:latest || true
+      # - name: Pull existing image from ECR as cache
+      #   run: docker pull ${{ steps.login-ecr.outputs.registry }}/reports:latest || true
 
       - name: Set image tag based on branch
         id: set-tag
         run: |
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "::set-output name=IMAGE_TAG::latest"
+            echo "IMAGE_TAG=latest" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/staging" ]]; then
-            echo "::set-output name=IMAGE_TAG::staging"
+            echo "IMAGE_TAG=staging" >> $GITHUB_OUTPUT
           else
-            echo "::set-output name=IMAGE_TAG::${{ github.sha }}"
+            echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build, tag, and push image to Amazon ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: reports
-          IMAGE_TAG: ${{ steps.set-tag.outputs.IMAGE_TAG }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --cache-from ${{ steps.login-ecr.outputs.registry }}/reports:latest .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+      - name: Write image tag to a file
+        run: echo "${{ steps.set-tag.outputs.IMAGE_TAG }}" > image_tag.txt
+
+      - name: Upload image tag as an artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: image-tag
+          path: image_tag.txt
+
+      # - name: Build, tag, and push image to Amazon ECR
+      #   env:
+      #     ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      #     ECR_REPOSITORY: reports
+      #     IMAGE_TAG: ${{ steps.set-tag.outputs.IMAGE_TAG }}
+      #   run: |
+      #     docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --cache-from ${{ steps.login-ecr.outputs.registry }}/reports:latest .
+      #     docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
