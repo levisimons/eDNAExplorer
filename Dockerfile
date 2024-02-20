@@ -40,7 +40,7 @@ RUN apt-get install -y r-base r-base-dev
 
 # Install conda
 RUN wget -P /tmp/ "https://repo.anaconda.com/miniconda/Miniconda3-py38_4.12.0-Linux-x86_64.sh" && \
-    bash "/tmp/Miniconda3-py38_4.12.0-Linux-x86_64.sh" -b -p /usr/local/miniconda
+  bash "/tmp/Miniconda3-py38_4.12.0-Linux-x86_64.sh" -b -p /usr/local/miniconda
 
 COPY env.yml /tmp/env.yml
 ENV PATH="/usr/local/miniconda/bin:$PATH"
@@ -50,7 +50,7 @@ COPY . /home/ubuntu/eDNAExplorer/
 
 # Create reports env
 RUN conda env create -f /tmp/env.yml -n reports && \
-    conda init
+  conda init
 
 RUN echo "source activate reports" >> /root/.bashrc
 
@@ -64,3 +64,4 @@ RUN conda run -n reports /bin/bash -c "Rscript /tmp/install_biocmanager.R"
 
 # Set the working directory
 WORKDIR /home/ubuntu/eDNAExplorer
+# Optional set the entrypoint

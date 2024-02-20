@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   workflow_run:
-    workflows: ["Deploy to AWS ECR"]
+    workflows: ["Build Image for AWS ECR"]
     types:
       - completed
     branches:

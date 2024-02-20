@@ -1,4 +1,4 @@
-name: Deploy to AWS ECR
+name: Build Image for AWS ECR
 
 permissions:
   id-token: write
@@ -8,19 +8,19 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
     branches: [main, develop]
-    # paths:
-    #   - "Dockerfile"
-    #   - "env.yml"
-    #   - "install.R"
-    #   - "install_biocmanager.R"
+    paths:
+      - "Dockerfile"
+      - "env.yml"
+      - "install.R"
+      - "install_biocmanager.R"
 
   push:
     branches: [main, develop]
-    # paths:
-    #   - "Dockerfile"
-    #   - "env.yml"
-    #   - "install.R"
-    #   - "install_biocmanager.R"
+    paths:
+      - "Dockerfile"
+      - "env.yml"
+      - "install.R"
+      - "install_biocmanager.R"
 
 jobs:
   build-and-push:
@@ -36,12 +36,12 @@ jobs:
           aws-region: ${{ secrets.AWS_ACCESS_DEFAULT_REGION }}
           role-to-assume: arn:aws:iam::576661951794:role/GitHubActions-ServerlessDeploy
 
-      # - name: Login to Amazon ECR
-      #   id: login-ecr
-      #   uses: aws-actions/amazon-ecr-login@v2
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-      # - name: Pull existing image from ECR as cache
-      #   run: docker pull ${{ steps.login-ecr.outputs.registry }}/reports:latest || true
+      - name: Pull existing image from ECR as cache
+        run: docker pull ${{ steps.login-ecr.outputs.registry }}/reports:latest || true
 
       - name: Set image tag based on branch
         id: set-tag
@@ -54,14 +54,11 @@ jobs:
             echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Write image tag to a file
-        run: echo "${{ steps.set-tag.outputs.IMAGE_TAG }}" > image_tag.txt
-
-      # - name: Build, tag, and push image to Amazon ECR
-      #   env:
-      #     ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-      #     ECR_REPOSITORY: reports
-      #     IMAGE_TAG: ${{ steps.set-tag.outputs.IMAGE_TAG }}
-      #   run: |
-      #     docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --cache-from ${{ steps.login-ecr.outputs.registry }}/reports:latest .
-      #     docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: reports
+          IMAGE_TAG: ${{ steps.set-tag.outputs.IMAGE_TAG }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --cache-from ${{ steps.login-ecr.outputs.registry }}/reports:latest .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
