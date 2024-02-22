@@ -30,7 +30,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Build RStudio",
+      "label": "Build Dev Image",
       "type": "shell",
       "command": "aws ecr get-login-password --region us-west-1 --profile edna-explorer | docker login --username AWS --password-stdin 576661951794.dkr.ecr.us-west-1.amazonaws.com && docker build -t reports-dev:1 ./RDev",
       "problemMatcher": [],
@@ -51,9 +51,9 @@
       }
     },
     {
-      "label": "Start RStudio",
+      "label": "Start Dev Image",
       "type": "shell",
-      "command": "docker run -d --name reports-container -p 8788:8788 -v ${workspaceFolder}:/home/ubuntu/eDNAExplorer -w /home/ubuntu/eDNAExplorer reports-dev:1",
+      "command": "docker run -d --name reports-container -p 8788:8788 -v ${workspaceFolder}:/home/ubuntu/eDNAExplorer -w /home/ubuntu/eDNAExplorer reports-dev:1 sleep infinity",
       "problemMatcher": [],
       "group": "none",
       "presentation": {
@@ -62,7 +62,7 @@
       }
     },
     {
-      "label": "Stop RStudio",
+      "label": "Stop Dev Image",
       "type": "shell",
       "command": "docker stop reports-container && docker rm reports-container",
       "problemMatcher": [],
@@ -73,7 +73,7 @@
       }
     },
     {
-      "label": "RStudio Shell",
+      "label": "Dev Shell",
       "type": "shell",
       "command": "docker exec -it reports-container /bin/bash",
       "problemMatcher": [],

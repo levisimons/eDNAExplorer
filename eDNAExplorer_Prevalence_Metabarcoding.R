@@ -12,14 +12,16 @@ source("init_report.R")
 
 tryCatch(
   {
-    print(paste("Alphabeta diversity script started", alpha_diversity_metric, sep = ", "))
+    print(paste("Prevalence script started", alpha_diversity_metric, sep = ", "))
     # Read in species list
     if (selected_species_list != "None") {
+      print(paste("Species list selected:", selected_species_list, sep = " "))
       species_list_df <- tbl(con, "SpeciesListItem")
       species_list_df <- species_list_df %>% filter(species_list == selected_species_list)
       species_list_df <- as.data.frame(species_list_df)
     }
 
+    print(paste("Connecting to database", db_host, db_port, db_name, db_user, sep = ", "))
     result <- process_metadata(
       con = con,
       project_id = project_id,
@@ -27,8 +29,9 @@ tryCatch(
       filter_site_names = filter_site_names,
       sample_first_date = sample_first_date,
       sample_last_date = sample_last_date,
-      environmental_variable = environmental_variable
+      environmental_variable = environmental_parameter
     )
+    print(paste("Metadata processed", result$total_samples, sep = ", "))
     metadata <- result$metadata
     total_samples <- result$total_samples
 

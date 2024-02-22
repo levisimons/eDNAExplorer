@@ -207,7 +207,6 @@ tryCatch(
 
             # Constructing the formula dynamically
             formula <- paste("BetaDist ~ ", environmental_variable, sep = "")
-            browser()
             test <- adonis2(as.formula(formula), data = data.frame(filtered_data))
             stat_test <- paste("PCA plot.  Results of PERMANOVA, using 999 permutations.\n", beta_diversity_metric, " beta diversity and ", new_legend, "\nDegrees of freedom: ", round(test$Df[1], 3), ". Sum of squares: ", round(test$SumOfSqs[1], 3), ". R-squared: ", round(test$R2[1], 3), ". F-statistic: ", round(test$F[1], 3), ". p: ", round(test$`Pr(>F)`[1], 3), sep = "")
           } else {
