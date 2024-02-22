@@ -1,19 +1,12 @@
 import ee
-import folium
-import functools
-import numpy as np
 import pandas as pd
-import os
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from ee.ee_exception import EEException
 from RasterDataset import RasterDataset
 from VectorDataset import VectorDataset
-import time
 import csv
-import ast
 import argparse
-import io
 import sys
 
 # script arguments
