@@ -31,7 +31,7 @@ tryCatch(
       "secretsmanager",
       "get-secret-value",
       "--secret-id",
-      "prod/ednaExplorer/postgres",
+      sprintf("%s/ednaExplorer/postgres", Sys.getenv("APP_ENV")),
       "--query",
       "SecretString",
       "--output",
@@ -40,7 +40,8 @@ tryCatch(
 
     # Execute the command and capture the output
     output <- system2(command, aws_args, stdout = TRUE)
-
+    print("Retrieved secret")
+    print(output)
     # Parse the JSON output
     parsed_output <- fromJSON(output)
 
@@ -85,6 +86,8 @@ tryCatch(
       sapply(dbListConnections(database_driver), dbDisconnect)
       con <- dbConnect(database_driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
 
+      cat("Connected to database: ", db_host, db_port, db_name, db_user, "\n")
+
       # Extract report_id from args.
       report_id <- args[1]
 
@@ -94,6 +97,10 @@ tryCatch(
       # Fetch report data
       sql_query <- sprintf("SELECT * FROM \"Report\" WHERE id = '%s'", report_id)
       report_data <- dbGetQuery(con, sql_query)
+
+      print("Loaded report:")
+      print(report_data)
+
       project_id <- report_data$projectId
       first_date <- report_data$firstDate
       last_date <- report_data$lastDate

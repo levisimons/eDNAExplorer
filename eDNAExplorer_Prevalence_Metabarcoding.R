@@ -12,7 +12,8 @@ source("init_report.R")
 
 tryCatch(
   {
-    print(paste("Prevalence script started", alpha_diversity_metric, sep = ", "))
+    print(paste("Prevalence script started."))
+
     # Read in species list
     if (selected_species_list != "None") {
       print(paste("Species list selected:", selected_species_list, sep = " "))
