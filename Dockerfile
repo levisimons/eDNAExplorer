@@ -65,4 +65,3 @@ RUN conda run -n reports /bin/bash -c "Rscript /tmp/install_biocmanager.R"
 
 # Set the working directory
 WORKDIR /home/ubuntu/eDNAExplorer
-# Optional set the entrypoint
