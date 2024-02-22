@@ -54,11 +54,41 @@ jobs:
             echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build, tag, and push image to Amazon ECR
+      - name: Check if image tag exists
+        id: check-tag
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: reports
-          IMAGE_TAG: ${{ steps.set-tag.outputs.IMAGE_TAG }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --cache-from ${{ steps.login-ecr.outputs.registry }}/reports:latest .
+          if aws ecr describe-images --repository-name $ECR_REPOSITORY --image-ids imageTag=$IMAGE_TAG; then
+            echo "TAG_EXISTS=true" >> $GITHUB_OUTPUT
+          else
+            echo "TAG_EXISTS=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build, tag, and push image to Amazon ECR
+        if: steps.check-tag.outputs.TAG_EXISTS == 'false'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: reports
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Update AWS Secrets Manager secret
+        if: steps.check-tag.outputs.TAG_EXISTS == 'false' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: reports
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          SECRET_NAME="${{ github.ref == 'refs/heads/develop' ? 'staging/ednaExplorer/reportsImageTagR' : 'prod/ednaExplorer/reportsImageTagR' }}"
+          SECRET_VALUE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+          # Prepare the secret value as a JSON string
+          SECRET_STRING="{\"image\":\"${SECRET_VALUE}\"}"
+
+          # Update the secret
+          aws secretsmanager update-secret --secret-id $SECRET_NAME --secret-string "$SECRET_STRING"
