@@ -16,7 +16,6 @@ tryCatch(
       dsn = Sys.getenv("SENTRY_DSN"),
       app_name = "r-report-service", app_version = "1.1.0",
       environment = Sys.getenv("APP_ENV"),
-      tags = list(foo = "tag1", bar = "tag2"),
       runtime = NULL
     )
     cat("Configured Sentry: ", Sys.getenv("SENTRY_DSN"), "\n")
@@ -87,7 +86,8 @@ tryCatch(
       con <- dbConnect(database_driver, host = db_host, port = db_port, dbname = db_name, user = db_user, password = db_pass)
 
       # Extract report_id from args.
-      # report_id <- "cls3jbfwe000akv0fy13e7lkr"
+      report_id <- args[1]
+
       # Update report with QUEUED state.
       updateReport(report_id, "QUEUED", con, reset = TRUE)
 
