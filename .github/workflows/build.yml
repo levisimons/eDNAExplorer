@@ -77,14 +77,21 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
+      - name: Determine Secret Name
+        id: set-secret-name
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "SECRET_NAME=staging/ednaExplorer/reportsImageTagR" >> $GITHUB_ENV
+          else
+            echo "SECRET_NAME=prod/ednaExplorer/reportsImageTagR" >> $GITHUB_ENV
+          fi
+
       - name: Update AWS Secrets Manager secret
-        if: steps.check-tag.outputs.TAG_EXISTS == 'false' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
         env:
+          IMAGE_TAG: ${{ github.sha }}
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: reports
-          IMAGE_TAG: ${{ github.sha }}
         run: |
-          SECRET_NAME="${{ github.ref == 'refs/heads/develop' ? 'staging/ednaExplorer/reportsImageTagR' : 'prod/ednaExplorer/reportsImageTagR' }}"
           SECRET_VALUE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
           # Prepare the secret value as a JSON string
