@@ -62,5 +62,9 @@ COPY install_biocmanager.R /tmp/install_biocmanager.R
 RUN conda run -n reports /bin/bash -c "Rscript /tmp/install.R"
 RUN conda run -n reports /bin/bash -c "Rscript /tmp/install_biocmanager.R"
 
+# Install minio client for GBIF Pull
+RUN wget https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc && \
+  chmod +x /usr/local/bin/mc
+
 # Set the working directory
 WORKDIR /home/ubuntu/eDNAExplorer
