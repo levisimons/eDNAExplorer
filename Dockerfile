@@ -66,5 +66,9 @@ RUN conda run -n reports /bin/bash -c "Rscript /tmp/install_biocmanager.R"
 RUN wget https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc && \
   chmod +x /usr/local/bin/mc
 
+# Create a symlink for mc binary to be accessible as expected by minioclient
+RUN mkdir -p /root/.local/share/R/minioclient/ && \
+  ln -s /usr/local/bin/mc /root/.local/share/R/minioclient/mc
+
 # Set the working directory
 WORKDIR /home/ubuntu/eDNAExplorer
