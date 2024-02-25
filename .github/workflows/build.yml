@@ -40,9 +40,6 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Pull existing image from ECR as cache
-        run: docker pull ${{ steps.login-ecr.outputs.registry }}/reports:latest || true
-
       - name: Set image tag based on branch
         id: set-tag
         run: |
