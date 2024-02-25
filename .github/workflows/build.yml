@@ -40,14 +40,11 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Pull existing image from ECR as cache
-        run: docker pull ${{ steps.login-ecr.outputs.registry }}/reports:latest || true
-
       - name: Set image tag based on branch
         id: set-tag
         run: |
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "IMAGE_TAG=latest" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAG=prod" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "IMAGE_TAG=staging" >> $GITHUB_OUTPUT
           else
@@ -67,15 +64,43 @@ jobs:
             echo "TAG_EXISTS=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Fetch the latest image tag from Amazon ECR
+        id: latest-tag
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: reports
+          AWS_REGION: us-west-1
+        run: |
+          LATEST_TAG=$(aws ecr describe-images \
+            --repository-name $ECR_REPOSITORY \
+            --region $AWS_REGION \
+            --query 'sort_by(imageDetails,& imagePushedAt)[-1].imageTags[0]' \
+            --output text)
+          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Pull the latest image for cache
+        if: steps.latest-tag.outputs.LATEST_TAG != 'None'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: reports
+        run: |
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.latest-tag.outputs.LATEST_TAG }}
+
       - name: Build, tag, and push image to Amazon ECR
         if: steps.check-tag.outputs.TAG_EXISTS == 'false'
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: reports
           IMAGE_TAG: ${{ github.sha }}
+          LABEL_TAG: ${{ steps.set-tag.outputs.IMAGE_TAG }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG . \
+            --cache-from $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.latest-tag.outputs.LATEST_TAG }}
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          # Tag the same image as 'prod' or 'staging'
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$LABEL_TAG
+          # Push the 'LABEL_TAG' tag
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$LABEL_TAG
 
       - name: Determine Secret Name
         id: set-secret-name
