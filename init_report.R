@@ -107,7 +107,7 @@ tryCatch(
       marker <- report_data$marker
       num_mismatch <- report_data$numMismatch
       taxonomic_rank <- tolower(report_data$taxonomicRank)
-      taxon_name <- tolower(report_data$taxon)
+      taxon_name <- report_data$taxon
       count_threshold <- report_data$countThreshold
       filter_threshold <- report_data$filterThreshold
       species_list <- report_data$speciesList

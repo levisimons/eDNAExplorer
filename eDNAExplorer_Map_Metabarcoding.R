@@ -39,6 +39,7 @@ tryCatch(
       distinct(.keep_all = TRUE)
     tronko_db <- as.data.frame(tronko_filtered)
     tronko_db <- tronko_db[complete.cases(tronko_db), ]
+    gbif_taxon_key <- name_backbone(name = taxon_name, rank = taxonomic_rank)$usageKey
 
     # Start buil1ding phase.
     updateReport(report_id, "BUILDING", con)
@@ -48,7 +49,7 @@ tryCatch(
       filter(
         basisofrecord %in% c("HUMAN_OBSERVATION", "OBSERVATION", "MACHINE_OBSERVATION"),
         coordinateuncertaintyinmeters <= 100 & !is.na(coordinateuncertaintyinmeters),
-        occurrencestatus == "PRESENT", taxonkey == Taxon_GBIF
+        occurrencestatus == "PRESENT", taxonkey == gbif_taxon_key
       ) %>%
       select(decimallongitude, decimallatitude)
     gbif_db <- as.data.frame(gbif_db)
