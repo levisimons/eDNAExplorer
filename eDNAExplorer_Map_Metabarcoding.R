@@ -25,6 +25,8 @@ tryCatch(
     # Start loading phase.
     updateReport(report_id, "LOADING", con)
 
+    cat("-------------------------------------", "Filtering GBIF occurrences:", taxon_name, taxonomic_rank, "-------------------------------------", sep = "\n")
+
     # Read in GBIF occurrences.
     gbif <- gbif_local()
 
